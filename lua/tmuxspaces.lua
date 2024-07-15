@@ -69,22 +69,27 @@ function M.open_workspace_popup(workspace, _)
     sorter = conf.generic_sorter({}),
     attach_mappings = function(prompt_bufnr)
       actions.select_default:replace(function()
-        actions.close(prompt_bufnr)
-        local selection = action_state.get_selected_entry()
-        local project = selection.value
-        local session_name = string.lower(project.name):gsub("[^%w_]", "_")
-        create_tmux_session(session_name, project.path)
-        switch_tmux_session(session_name)
-      end)
+        local picker = action_state.get_current_picker(prompt_bufnr)
+        local selections = picker:get_multi_selection()
 
-      -- Add a new custom action for multi-select
-      actions.select_tab:replace(function()
-        local selection = action_state.get_selected_entry()
-        local project = selection.value
-        local session_name = string.lower(project.name):gsub("[^%w_]", "_")
-        create_tmux_session(session_name, project.path)
-        print("Created tmux session: " .. session_name)
-        return true -- Return true to keep the picker open
+        if #selections > 0 then
+          -- Multiple selections: create sessions in background
+          for _, selection in ipairs(selections) do
+            local project = selection.value
+            local session_name = string.lower(project.name):gsub("[^%w_]", "_")
+            create_tmux_session(session_name, project.path)
+            print("Created tmux session: " .. session_name)
+          end
+        else
+          -- Single selection: create and switch to session
+          local selection = action_state.get_selected_entry()
+          local project = selection.value
+          local session_name = string.lower(project.name):gsub("[^%w_]", "_")
+          create_tmux_session(session_name, project.path)
+          switch_tmux_session(session_name)
+        end
+
+        actions.close(prompt_bufnr)
       end)
 
       return true
