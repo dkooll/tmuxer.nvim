@@ -1,4 +1,4 @@
-# tmuxspaces
+# tmuxer
 
 This is a neovim plugin that streamlines workspace management and tmux session handling.
 
@@ -6,4 +6,4 @@ It allows you to quickly navigate between different project directories and auto
 
 With tmuxspaces.nvim, you can effortlessly organize your development environment, making it easier to juggle multiple projects.
 
-The plugin uses Telescope for an intuitive, searchable interface to select workspaces and tmux sessions.
+The plugin uses telescope for an intuitive, searchable interface to select workspaces and tmux sessions.
