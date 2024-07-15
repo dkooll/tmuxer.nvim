@@ -54,8 +54,8 @@ function M.open_workspace_popup(workspace, _)
     finder = finders.new_table {
       results = projects,
       entry_maker = function(entry)
-        local display_width = vim.o.columns - 4                   -- Subtract 4 for some padding
-        local column_width = math.floor((display_width - 20) / 2) -- Subtract 20 for spacing
+        local display_width = vim.o.columns - 4
+        local column_width = math.floor((display_width - 20) / 2)
         column_width = math.max(1, math.min(column_width, 50))
         local name_format = "%-" .. column_width .. "." .. column_width .. "s"
         local parent_format = "%-" .. column_width .. "." .. column_width .. "s"
@@ -76,6 +76,17 @@ function M.open_workspace_popup(workspace, _)
         create_tmux_session(session_name, project.path)
         switch_tmux_session(session_name)
       end)
+
+      -- Add a new custom action for multi-select
+      actions.select_tab:replace(function()
+        local selection = action_state.get_selected_entry()
+        local project = selection.value
+        local session_name = string.lower(project.name):gsub("[^%w_]", "_")
+        create_tmux_session(session_name, project.path)
+        print("Created tmux session: " .. session_name)
+        return true -- Return true to keep the picker open
+      end)
+
       return true
     end,
   }):find()
