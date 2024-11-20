@@ -10,27 +10,41 @@ local function is_tmux_running()
   return vim.fn.exists('$TMUX') == 1
 end
 
--- Corrected create_tmux_session function
 local function create_tmux_session(session_name, project_path, command)
+  local expanded_project_path = vim.fn.expand(project_path)
   local session_name_escaped = vim.fn.shellescape(session_name)
-  local project_path_escaped = vim.fn.shellescape(project_path)
+  local project_path_escaped = vim.fn.shellescape(expanded_project_path)
   local cmd = "tmux new-session -d -s " .. session_name_escaped .. " -c " .. project_path_escaped
   if command and command ~= '' then
     local command_escaped = vim.fn.shellescape(command)
     cmd = cmd .. " " .. command_escaped
   end
-  os.execute(cmd)
+  print("Executing command: " .. cmd)
+  local result = vim.fn.system(cmd)
+  local exit_code = vim.v.shell_error
+  if exit_code ~= 0 then
+    print("Error creating tmux session: " .. session_name)
+    print("Command output: " .. result)
+  end
 end
 
 local function switch_tmux_session(session_name)
   local session_name_escaped = vim.fn.shellescape(session_name)
-  os.execute("tmux switch-client -t " .. session_name_escaped)
+  local cmd = "tmux switch-client -t " .. session_name_escaped
+  print("Executing command: " .. cmd)
+  local result = vim.fn.system(cmd)
+  local exit_code = vim.v.shell_error
+  if exit_code ~= 0 then
+    print("Error switching to tmux session: " .. session_name)
+    print("Command output: " .. result)
+  end
 end
 
 local function find_git_projects(workspace_path, max_depth)
+  local expanded_workspace_path = vim.fn.expand(workspace_path)
   local cmd = string.format(
     "find %s -type d -name .git -prune -maxdepth %d ! -path '*/archive/*'",
-    workspace_path,
+    vim.fn.shellescape(expanded_workspace_path),
     max_depth
   )
   local git_dirs = vim.fn.systemlist(cmd)
@@ -141,6 +155,10 @@ end
 
 function M.setup(opts)
   M.workspaces = opts.workspaces or {}
+  -- Expand workspace paths
+  for _, workspace in ipairs(M.workspaces) do
+    workspace.path = vim.fn.expand(workspace.path)
+  end
 end
 
 return M
