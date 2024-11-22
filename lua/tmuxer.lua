@@ -129,11 +129,11 @@ local delete_action = function(bufnr)
   local current_session = vim.fn.systemlist("tmux display-message -p '#S'")[1]
 
   if current and current.value ~= current_session then
-    -- Store the index of the current selection
-    local current_index = current_picker:get_index_of_selection()
+    -- Store the current selection's value
+    local current_value = current.value
 
     -- Kill the selected session
-    kill_tmux_session(current.value)
+    kill_tmux_session(current_value)
 
     -- Get updated list of sessions
     local new_results = get_sorted_sessions()
@@ -150,11 +150,18 @@ local delete_action = function(bufnr)
       end,
     }), { reset_prompt = false })
 
-    -- Restore the cursor to the nearest session
+    -- Restore the cursor to the same value or nearest match
     vim.defer_fn(function()
-      local new_index = math.min(current_index, #new_results) -- Keep it within bounds
-      if new_results[new_index] then
-        current_picker:set_selection(new_index - 1) -- 0-based index
+      for index, entry in ipairs(new_results) do
+        if entry == current_value then
+          current_picker:set_selection(index - 1) -- Adjust for 0-based index
+          return
+        end
+      end
+
+      -- If the exact session is gone, set the selection to the closest valid index
+      if #new_results > 0 then
+        current_picker:set_selection(math.min(#new_results - 1, 0))
       end
     end, 0)
   end
