@@ -122,75 +122,30 @@ function M.tmux_sessions()
     return
   end
 
+  local delete_action = function(bufnr)
+    local current = action_state.get_selected_entry()
+    local current_session = vim.fn.systemlist("tmux display-message -p '#S'")[1]
 
-local delete_action = function(bufnr)
-  local current_picker = action_state.get_current_picker(bufnr)
-  local current = action_state.get_selected_entry()
-  local current_session = vim.fn.systemlist("tmux display-message -p '#S'")[1]
+    if current and current.value ~= current_session then
+      kill_tmux_session(current.value)
 
-  if current and current.value ~= current_session then
-    -- Get the value of the current selection
-    local current_value = current.value
+      -- Get updated list of sessions
+      local new_results = get_sorted_sessions()
 
-    -- Kill the selected session
-    kill_tmux_session(current_value)
-
-    -- Get updated list of sessions
-    local new_results = get_sorted_sessions()
-
-    -- Refresh the picker
-    current_picker:refresh(finders.new_table({
-      results = new_results,
-      entry_maker = function(entry)
-        return {
-          value = entry,
-          display = entry,
-          ordinal = entry,
-        }
-      end,
-    }), { reset_prompt = false })
-
-    -- Restore the cursor position to the closest logical match
-    vim.defer_fn(function()
-      for index, entry in ipairs(new_results) do
-        if entry == current_value then
-          current_picker:set_selection(index - 1) -- Adjust for 0-based indexing
-          return
-        end
-      end
-
-      -- If the session was deleted, select the closest valid entry
-      if #new_results > 0 then
-        current_picker:set_selection(math.min(#new_results - 1, 0))
-      end
-    end, 20) -- Slight delay for async refresh
+      -- Get current picker and update its results
+      local current_picker = action_state.get_current_picker(bufnr)
+      current_picker:refresh(finders.new_table({
+        results = new_results,
+        entry_maker = function(entry)
+          return {
+            value = entry,
+            display = entry,
+            ordinal = entry,
+          }
+        end,
+      }), { reset_prompt = false })
+    end
   end
-end
-
-  --local delete_action = function(bufnr)
-  --local current = action_state.get_selected_entry()
-  --local current_session = vim.fn.systemlist("tmux display-message -p '#S'")[1]
-
-  --if current and current.value ~= current_session then
-  --kill_tmux_session(current.value)
-
-  ---- Get updated list of sessions
-  --local new_results = get_sorted_sessions()
-
-  ---- Get current picker and update its results
-  --local current_picker = action_state.get_current_picker(bufnr)
-  --current_picker:refresh(finders.new_table({
-  --results = new_results,
-  --entry_maker = function(entry)
-  --return {
-  --value = entry,
-  --display = entry,
-  --ordinal = entry,
-  --}
-  --end,
-  --}), { reset_prompt = false })
-  --end
-  --end
 
   local custom_actions = {
     ["delete"] = delete_action,
