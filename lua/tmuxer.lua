@@ -14,16 +14,14 @@ local function create_tmux_session(session_name, project_path)
   os.execute("tmux new-session -ds " .. session_name .. " -c " .. project_path)
 end
 
-local function create_and_run_dev_session(session_name, project_path, nvim_cmd)
+local function run_nvim_in_session(session_name, project_path)
   -- First create the session
   local create_cmd = string.format("tmux new-session -ds %s -c %s", session_name, project_path)
   os.execute(create_cmd)
 
-  -- Print for debugging
-  print("Using nvim command:", nvim_cmd)
-
-  -- Then send the nvim command to the session
-  local send_cmd = string.format("tmux send-keys -t %s '%s' C-m", session_name, nvim_cmd)
+  -- Use the configured nvim command
+  local nvim_cmd = M.config.nvim_cmd or "nvim"
+  local send_cmd = string.format("tmux send-keys -t %s '%s' Enter", session_name, nvim_cmd)
   os.execute(send_cmd)
 end
 
@@ -54,7 +52,7 @@ local function find_git_projects(workspace_path, max_depth)
   return projects
 end
 
-function M.open_workspace_popup(workspace)
+function M.open_workspace_popup(workspace, _)
   if not is_tmux_running() then
     print("Not in a tmux session")
     return
@@ -98,11 +96,9 @@ function M.open_workspace_popup(workspace)
           local selection = action_state.get_selected_entry()
           local project = selection.value
           local session_name = string.lower(project.name):gsub("[^%w_]", "_")
-          -- Print current config for debugging
-          print("Current config:", vim.inspect(M.config))
-          create_and_run_dev_session(session_name, project.path, M.config.nvim_cmd)
+          run_nvim_in_session(session_name, project.path)
           switch_tmux_session(session_name)
-          print("Created and switched to session: " .. session_name .. " with " .. M.config.nvim_cmd)
+          print("Created and switched to session: " .. session_name .. " with " .. (M.config.nvim_cmd or "nvim"))
         end
 
         actions.close(prompt_bufnr)
@@ -149,10 +145,8 @@ end
 function M.setup(opts)
   M.workspaces = opts.workspaces or {}
   M.config = {
-    nvim_cmd = opts.nvim_cmd or "nvim"
+    nvim_cmd = opts.nvim_cmd or "nvim" -- Store the nvim command from config
   }
-  -- Print config after setup for debugging
-  print("Setup config:", vim.inspect(M.config))
 end
 
 return M
