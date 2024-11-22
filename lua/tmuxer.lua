@@ -152,7 +152,7 @@ function M.tmux_sessions()
   }
 
   pickers.new({}, {
-    prompt_title = "Manage Tmux Sessions",
+    prompt_title = "Switch Tmux Session",
     finder = finders.new_table {
       results = get_sorted_sessions(),
       entry_maker = function(entry)
