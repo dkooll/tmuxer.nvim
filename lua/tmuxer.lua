@@ -123,74 +123,75 @@ function M.tmux_sessions()
   end
 
 
-local delete_action = function(bufnr)
-  local current_picker = action_state.get_current_picker(bufnr)
-  local current = action_state.get_selected_entry()
-  local current_session = vim.fn.systemlist("tmux display-message -p '#S'")[1]
+  local delete_action = function(bufnr)
+    local current_picker = action_state.get_current_picker(bufnr)
+    local current = action_state.get_selected_entry()
+    local current_session = vim.fn.systemlist("tmux display-message -p '#S'")[1]
 
-  if current and current.value ~= current_session then
-    -- Store the current selection's value
-    local current_value = current.value
+    if current and current.value ~= current_session then
+      -- Get the current selection's value
+      local current_value = current.value
 
-    -- Kill the selected session
-    kill_tmux_session(current_value)
+      -- Kill the selected session
+      kill_tmux_session(current_value)
 
-    -- Get updated list of sessions
-    local new_results = get_sorted_sessions()
+      -- Get updated list of sessions
+      local new_results = get_sorted_sessions()
 
-    -- Refresh the picker
-    current_picker:refresh(finders.new_table({
-      results = new_results,
-      entry_maker = function(entry)
-        return {
-          value = entry,
-          display = entry,
-          ordinal = entry,
-        }
-      end,
-    }), { reset_prompt = false })
-
-    -- Restore the cursor to the same value or nearest match
-    vim.defer_fn(function()
+      -- Find the index of the deleted session in the old list
+      local deleted_index = nil
       for index, entry in ipairs(new_results) do
         if entry == current_value then
-          current_picker:set_selection(index - 1) -- Adjust for 0-based index
-          return
+          deleted_index = index
+          break
         end
       end
 
-      -- If the exact session is gone, set the selection to the closest valid index
-      if #new_results > 0 then
-        current_picker:set_selection(math.min(#new_results - 1, 0))
-      end
-    end, 0)
-  end
-end
+      -- Refresh the picker
+      current_picker:refresh(finders.new_table({
+        results = new_results,
+        entry_maker = function(entry)
+          return {
+            value = entry,
+            display = entry,
+            ordinal = entry,
+          }
+        end,
+      }), { reset_prompt = false })
 
+      -- Restore the cursor to the next logical position
+      vim.defer_fn(function()
+        if #new_results > 0 then
+          local new_index = math.min(deleted_index or 1, #new_results)
+          current_picker:set_selection(new_index - 1) -- Adjust for 0-based index
+        end
+      end, 10)                                      -- Delay to ensure picker refresh completes
+    end
+  end
 
   --local delete_action = function(bufnr)
-    --local current = action_state.get_selected_entry()
-    --local current_session = vim.fn.systemlist("tmux display-message -p '#S'")[1]
+  --local current = action_state.get_selected_entry()
+  --local current_session = vim.fn.systemlist("tmux display-message -p '#S'")[1]
 
-    --if current and current.value ~= current_session then
-      --kill_tmux_session(current.value)
+  --if current and current.value ~= current_session then
+  --kill_tmux_session(current.value)
 
-      ---- Get updated list of sessions
-      --local new_results = get_sorted_sessions()
+  ---- Get updated list of sessions
+  --local new_results = get_sorted_sessions()
 
-      ---- Get current picker and update its results
-      --local current_picker = action_state.get_current_picker(bufnr)
-      --current_picker:refresh(finders.new_table({
-        --results = new_results,
-        --entry_maker = function(entry)
-          --return {
-            --value = entry,
-            --display = entry,
-            --ordinal = entry,
-          --}
-        --end,
-      --}), { reset_prompt = false })
-    --end
+  ---- Get current picker and update its results
+  --local current_picker = action_state.get_current_picker(bufnr)
+  --current_picker:refresh(finders.new_table({
+  --results = new_results,
+  --entry_maker = function(entry)
+  --return {
+  --value = entry,
+  --display = entry,
+  --ordinal = entry,
+  --}
+  --end,
+  --}), { reset_prompt = false })
+  --end
   --end
 
   local custom_actions = {
