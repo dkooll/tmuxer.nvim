@@ -122,6 +122,25 @@ function M.tmux_sessions()
     return
   end
 
+  local function delete_session(bufnr)
+    local current = action_state.get_selected_entry()
+    local current_session = vim.fn.systemlist("tmux display-message -p '#S'")[1]
+    if current and current.value ~= current_session then
+      kill_tmux_session(current.value)
+      local picker = action_state.get_current_picker(bufnr)
+      picker:refresh(finders.new_table {
+        results = get_sorted_sessions(),
+        entry_maker = function(entry)
+          return {
+            value = entry,
+            display = entry,
+            ordinal = entry,
+          }
+        end
+      })
+    end
+  end
+
   pickers.new({}, {
     prompt_title = "Switch Tmux Session",
     finder = finders.new_table {
@@ -135,35 +154,30 @@ function M.tmux_sessions()
       end
     },
     sorter = conf.generic_sorter({}),
-    attach_mappings = function(prompt_bufnr)
+    attach_mappings = function(bufnr)
       actions.select_default:replace(function()
-        actions.close(prompt_bufnr)
+        actions.close(bufnr)
         local selection = action_state.get_selected_entry()
         switch_tmux_session(selection.value)
       end)
 
-      local delete_session = function()
-        local selection = action_state.get_selected_entry()
-        if selection and selection.value ~= vim.fn.systemlist("tmux display-message -p '#S'")[1] then
-          kill_tmux_session(selection.value)
-          local picker = action_state.get_current_picker(prompt_bufnr)
-          picker:refresh(finders.new_table {
-            results = get_sorted_sessions(),
-            entry_maker = function(entry)
-              return {
-                value = entry,
-                display = entry,
-                ordinal = entry,
-              }
-            end,
-          })
-        end
-      end
+      -- Set up Ctrl-d mapping for delete
+      local map = require('telescope.actions.set')
+      map.select:replace(function()
+        delete_session(bufnr)
+      end)
 
-      vim.keymap.set({ "i", "n" }, "<C-d>", delete_session, { buffer = prompt_bufnr })
-
+      require('telescope.actions.set').shift_selection:replace(function() end)
       return true
     end,
+    mappings = {
+      i = {
+        ["<C-d>"] = "select"
+      },
+      n = {
+        ["<C-d>"] = "select"
+      }
+    }
   }):find()
 end
 
@@ -175,6 +189,7 @@ function M.setup(opts)
 end
 
 return M
+
 
 --local M = {}
 
