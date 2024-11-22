@@ -14,14 +14,10 @@ local function create_tmux_session(session_name, project_path)
   os.execute("tmux new-session -ds " .. session_name .. " -c " .. project_path)
 end
 
-local function create_and_run_nvim_session(session_name, project_path)
-  -- First create the session
+local function run_nvim_in_session(session_name, project_path)
   local create_cmd = string.format("tmux new-session -ds %s -c %s", session_name, project_path)
   os.execute(create_cmd)
-
-  -- Then send the nvim command to the session
-  local send_cmd = string.format("tmux send-keys -t %s 'nvim' C-m", session_name)
-  os.execute(send_cmd)
+  os.execute(string.format("tmux send-keys -t %s 'nvim' Enter", session_name))
 end
 
 local function switch_tmux_session(session_name)
@@ -95,7 +91,7 @@ function M.open_workspace_popup(workspace, _)
           local selection = action_state.get_selected_entry()
           local project = selection.value
           local session_name = string.lower(project.name):gsub("[^%w_]", "_")
-          create_and_run_nvim_session(session_name, project.path)
+          run_nvim_in_session(session_name, project.path)
           switch_tmux_session(session_name)
           print("Created and switched to session: " .. session_name .. " with nvim")
         end
