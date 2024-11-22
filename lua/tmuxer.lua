@@ -122,25 +122,34 @@ function M.tmux_sessions()
     return
   end
 
-  local delete_session = function(prompt_bufnr)
+  local delete_action = function(bufnr)
     local current = action_state.get_selected_entry()
     local current_session = vim.fn.systemlist("tmux display-message -p '#S'")[1]
 
     if current and current.value ~= current_session then
       kill_tmux_session(current.value)
-      local picker = action_state.get_current_picker(prompt_bufnr)
-      picker:refresh(finders.new_table {
-        results = get_sorted_sessions(),
+
+      -- Get updated list of sessions
+      local new_results = get_sorted_sessions()
+
+      -- Get current picker and update its results
+      local current_picker = action_state.get_current_picker(bufnr)
+      current_picker:refresh(finders.new_table({
+        results = new_results,
         entry_maker = function(entry)
           return {
             value = entry,
             display = entry,
             ordinal = entry,
           }
-        end
-      })
+        end,
+      }), { reset_prompt = false })
     end
   end
+
+  local custom_actions = {
+    ["delete"] = delete_action,
+  }
 
   pickers.new({}, {
     prompt_title = "Switch Tmux Session",
@@ -155,23 +164,14 @@ function M.tmux_sessions()
       end
     },
     sorter = conf.generic_sorter({}),
-    attach_mappings = function(prompt_bufnr)
-      actions.select_default:replace(function()
-        local selection = action_state.get_selected_entry()
-        switch_tmux_session(selection.value)
-        actions.close(prompt_bufnr)
-      end)
+    attach_mappings = function(_, map)
+      -- Add custom action
+      map("i", "<c-d>", custom_actions.delete)
+      map("n", "<c-d>", custom_actions.delete)
 
+      -- Keep default mappings
       return true
     end,
-    mappings = {
-      i = {
-        ["<c-d>"] = delete_session
-      },
-      n = {
-        ["<c-d>"] = delete_session
-      }
-    }
   }):find()
 end
 
