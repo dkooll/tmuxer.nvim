@@ -155,29 +155,32 @@ function M.tmux_sessions()
     },
     sorter = conf.generic_sorter({}),
     attach_mappings = function(bufnr)
+      -- Map Ctrl-d to delete session
+      vim.api.nvim_buf_set_keymap(bufnr, "i", "<C-d>", "", {
+        noremap = true,
+        silent = true,
+        callback = function()
+          delete_session(bufnr)
+        end
+      })
+
+      vim.api.nvim_buf_set_keymap(bufnr, "n", "<C-d>", "", {
+        noremap = true,
+        silent = true,
+        callback = function()
+          delete_session(bufnr)
+        end
+      })
+
+      -- Default action for Enter key
       actions.select_default:replace(function()
-        actions.close(bufnr)
         local selection = action_state.get_selected_entry()
         switch_tmux_session(selection.value)
+        actions.close(bufnr)
       end)
 
-      -- Set up Ctrl-d mapping for delete
-      local map = require('telescope.actions.set')
-      map.select:replace(function()
-        delete_session(bufnr)
-      end)
-
-      require('telescope.actions.set').shift_selection:replace(function() end)
       return true
     end,
-    mappings = {
-      i = {
-        ["<C-d>"] = "select"
-      },
-      n = {
-        ["<C-d>"] = "select"
-      }
-    }
   }):find()
 end
 
@@ -189,7 +192,6 @@ function M.setup(opts)
 end
 
 return M
-
 
 --local M = {}
 
