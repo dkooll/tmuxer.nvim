@@ -122,12 +122,13 @@ function M.tmux_sessions()
     return
   end
 
-  local function delete_session(bufnr)
+  local delete_session = function(prompt_bufnr)
     local current = action_state.get_selected_entry()
     local current_session = vim.fn.systemlist("tmux display-message -p '#S'")[1]
+
     if current and current.value ~= current_session then
       kill_tmux_session(current.value)
-      local picker = action_state.get_current_picker(bufnr)
+      local picker = action_state.get_current_picker(prompt_bufnr)
       picker:refresh(finders.new_table {
         results = get_sorted_sessions(),
         entry_maker = function(entry)
@@ -154,33 +155,23 @@ function M.tmux_sessions()
       end
     },
     sorter = conf.generic_sorter({}),
-    attach_mappings = function(bufnr)
-      -- Map Ctrl-d to delete session
-      vim.api.nvim_buf_set_keymap(bufnr, "i", "<C-d>", "", {
-        noremap = true,
-        silent = true,
-        callback = function()
-          delete_session(bufnr)
-        end
-      })
-
-      vim.api.nvim_buf_set_keymap(bufnr, "n", "<C-d>", "", {
-        noremap = true,
-        silent = true,
-        callback = function()
-          delete_session(bufnr)
-        end
-      })
-
-      -- Default action for Enter key
+    attach_mappings = function(prompt_bufnr)
       actions.select_default:replace(function()
         local selection = action_state.get_selected_entry()
         switch_tmux_session(selection.value)
-        actions.close(bufnr)
+        actions.close(prompt_bufnr)
       end)
 
       return true
     end,
+    mappings = {
+      i = {
+        ["<c-d>"] = delete_session
+      },
+      n = {
+        ["<c-d>"] = delete_session
+      }
+    }
   }):find()
 end
 
@@ -192,6 +183,7 @@ function M.setup(opts)
 end
 
 return M
+
 
 --local M = {}
 
