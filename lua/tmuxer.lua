@@ -119,7 +119,6 @@ local function setup_telescope_picker()
           return
         end
 
-        -- Get all projects from all base directories
         local all_projects = {}
         for _, base_dir in ipairs(M.config.base_dirs) do
           local projects = discover_git_projects(base_dir, M.config.max_depth, M.config.excluded_dirs)
@@ -131,17 +130,9 @@ local function setup_telescope_picker()
           finder = finders.new_table {
             results = all_projects,
             entry_maker = function(entry)
-              local display_width = vim.o.columns - 4
-              local column_width = math.floor((display_width - 20) / 2)
-              column_width = math.max(1, math.min(column_width, 50))
-
               return {
                 value = entry,
-                display = string.format(
-                  "%-" .. column_width .. "s %-" .. column_width .. "s",
-                  entry.name,
-                  entry.relative_path
-                ),
+                display = string.format("%-40s %-40s", entry.name, entry.relative_path),
                 ordinal = entry.relative_path .. " " .. entry.name,
               }
             end
@@ -149,25 +140,12 @@ local function setup_telescope_picker()
           sorter = conf.generic_sorter(opts),
           attach_mappings = function(prompt_bufnr)
             actions.select_default:replace(function()
-              local picker = action_state.get_current_picker(prompt_bufnr)
-              local selections = picker:get_multi_selection()
-
-              if #selections > 0 then
-                for _, selection in ipairs(selections) do
-                  local project = selection.value
-                  local session_name = sanitize_session_name(project.name)
-                  create_tmux_session_with_nvim(session_name, project.path)
-                  vim.notify("Created tmux session: " .. session_name)
-                end
-              else
-                local selection = action_state.get_selected_entry()
-                local project = selection.value
-                local session_name = sanitize_session_name(project.name)
-                create_tmux_session_with_nvim(session_name, project.path)
-                switch_to_tmux_session(session_name)
-                vim.notify("Created and switched to session: " .. session_name)
-              end
-
+              local selection = action_state.get_selected_entry()
+              local project = selection.value
+              local session_name = sanitize_session_name(project.name)
+              create_tmux_session_with_nvim(session_name, project.path)
+              switch_to_tmux_session(session_name)
+              vim.notify("Created and switched to session: " .. session_name)
               actions.close(prompt_bufnr)
             end)
             return true
@@ -199,9 +177,10 @@ local function setup_telescope_picker()
           sorter = conf.generic_sorter(opts),
           attach_mappings = function(prompt_bufnr)
             actions.select_default:replace(function()
-              actions.close(prompt_bufnr)
               local selection = action_state.get_selected_entry()
               switch_to_tmux_session(selection.value)
+              vim.notify("Switched to session: " .. selection.value)
+              actions.close(prompt_bufnr)
             end)
             return true
           end,
@@ -212,26 +191,15 @@ local function setup_telescope_picker()
 end
 
 function M.setup(opts)
-  -- Merge user config with defaults
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
   setup_telescope_picker()
+  vim.api.nvim_create_user_command("WorkspaceOpen", function()
+    require("telescope").extensions.tmuxer.tmuxer()
+  end, { desc = "Create or switch to a Tmux session for a project" })
 
-  -- Define custom commands
-  vim.api.nvim_create_user_command(
-    "WorkspaceOpen",
-    function()
-      require('telescope').extensions.tmuxer.tmuxer()
-    end,
-    { desc = "Create or switch Tmux session for a project" }
-  )
-
-  vim.api.nvim_create_user_command(
-    "TmuxSessions",
-    function()
-      require('telescope').extensions.tmuxer.tmux_sessions()
-    end,
-    { desc = "Switch between existing Tmux sessions" }
-  )
+  vim.api.nvim_create_user_command("TmuxSessions", function()
+    require("telescope").extensions.tmuxer.tmux_sessions()
+  end, { desc = "Switch to an existing Tmux session" })
 end
 
 return M
