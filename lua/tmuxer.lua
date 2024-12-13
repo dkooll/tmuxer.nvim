@@ -40,7 +40,7 @@ local function get_find_command(base_dir, max_depth, excluded_dirs)
       " "
     )
     return string.format(
-      "fd -H -t d -d %d '^.git$' %s %s -x echo {//}",
+      "fd -H -t d -d %d .git %s %s",
       max_depth,
       vim.fn.expand(base_dir),
       exclude_patterns
@@ -106,24 +106,11 @@ function M.open_workspace_popup(workspace)
     sorter = conf.generic_sorter({}),
     attach_mappings = function(prompt_bufnr)
       actions.select_default:replace(function()
-        local picker = action_state.get_current_picker(prompt_bufnr)
-        local selection = picker:get_multi_selection()
-
-        if #selection > 0 then
-          for _, sel in ipairs(selection) do
-            local project = sel.value
-            local session_name = sanitize_session_name(project.name)
-            create_tmux_session(session_name, project.path)
-            print("Created tmux session: " .. session_name)
-          end
-        else
-          local project = action_state.get_selected_entry().value
-          local session_name = sanitize_session_name(project.name)
-          run_nvim_in_session(session_name, project.path)
-          switch_tmux_session(session_name)
-          print("Created and switched to session: " .. session_name)
-        end
-
+        local selection = action_state.get_selected_entry().value
+        local session_name = sanitize_session_name(selection.name)
+        run_nvim_in_session(session_name, selection.path)
+        switch_tmux_session(session_name)
+        print("Created and switched to session: " .. session_name)
         actions.close(prompt_bufnr)
       end)
       return true
@@ -178,7 +165,7 @@ function M.setup(opts)
         print("No workspaces configured")
         return
       end
-      M.open_workspace_popup(opts.workspaces[1]) -- Adjust to support multiple workspaces
+      M.open_workspace_popup(opts.workspaces[1]) -- Supports first workspace only for now
     end,
     { desc = "Create or switch to a Tmux session for a project" }
   )
