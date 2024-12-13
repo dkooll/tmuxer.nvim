@@ -3,6 +3,14 @@ local M = {}
 -- Cache for project lists to improve performance
 local project_cache = {}
 
+-- Default configuration
+M.config = {
+  nvim_cmd = "nvim",
+  base_dirs = { "~/Documents/workspaces" },
+  excluded_dirs = { "archive", "node_modules", ".git", "vendor", "dist", "build" },
+  max_depth = 3
+}
+
 -- Utility functions
 local function is_tmux_active()
   return vim.fn.exists('$TMUX') == 1
@@ -83,9 +91,9 @@ local function discover_git_projects(base_dir, max_depth, excluded_dirs)
 end
 
 -- TMux session management
-local function create_tmux_session_with_nvim(session_name, project_path, nvim_cmd)
+local function create_tmux_session_with_nvim(session_name, project_path)
   local create_cmd = string.format("tmux new-session -ds %s -c %s", session_name, project_path)
-  local send_cmd = string.format("tmux send-keys -t %s '%s' Enter", session_name, nvim_cmd)
+  local send_cmd = string.format("tmux send-keys -t %s '%s' Enter", session_name, M.config.nvim_cmd)
 
   return execute_tmux_command(create_cmd) and execute_tmux_command(send_cmd)
 end
@@ -95,7 +103,7 @@ local function switch_to_tmux_session(session_name)
 end
 
 -- Telescope integration
-function M.setup()
+local function setup_telescope_picker()
   local telescope = require('telescope')
   local pickers = require('telescope.pickers')
   local finders = require('telescope.finders')
@@ -113,13 +121,8 @@ function M.setup()
 
         -- Get all projects from all base directories
         local all_projects = {}
-        local base_dirs = opts.base_dirs or { "~/" }
-        local excluded_dirs = opts.excluded_dirs or {}
-        local max_depth = opts.max_depth or 3
-        local nvim_cmd = opts.nvim_cmd or "nvim"
-
-        for _, base_dir in ipairs(base_dirs) do
-          local projects = discover_git_projects(base_dir, max_depth, excluded_dirs)
+        for _, base_dir in ipairs(M.config.base_dirs) do
+          local projects = discover_git_projects(base_dir, M.config.max_depth, M.config.excluded_dirs)
           vim.list_extend(all_projects, projects)
         end
 
@@ -153,14 +156,14 @@ function M.setup()
                 for _, selection in ipairs(selections) do
                   local project = selection.value
                   local session_name = sanitize_session_name(project.name)
-                  create_tmux_session_with_nvim(session_name, project.path, nvim_cmd)
+                  create_tmux_session_with_nvim(session_name, project.path)
                   vim.notify("Created tmux session: " .. session_name)
                 end
               else
                 local selection = action_state.get_selected_entry()
                 local project = selection.value
                 local session_name = sanitize_session_name(project.name)
-                create_tmux_session_with_nvim(session_name, project.path, nvim_cmd)
+                create_tmux_session_with_nvim(session_name, project.path)
                 switch_to_tmux_session(session_name)
                 vim.notify("Created and switched to session: " .. session_name)
               end
@@ -208,7 +211,14 @@ function M.setup()
   })
 end
 
+function M.setup(opts)
+  -- Merge user config with defaults
+  M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+  setup_telescope_picker()
+end
+
 return M
+
 
 -- local M = {}
 --
