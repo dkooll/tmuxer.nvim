@@ -169,6 +169,27 @@ function M.setup(opts)
   if opts.nvim_cmd then
     M.config.nvim_cmd = opts.nvim_cmd
   end
+
+  -- Register commands
+  vim.api.nvim_create_user_command(
+    "WorkspaceOpen",
+    function()
+      if not opts.workspaces or #opts.workspaces == 0 then
+        print("No workspaces configured")
+        return
+      end
+      M.open_workspace_popup(opts.workspaces[1]) -- Adjust to support multiple workspaces
+    end,
+    { desc = "Create or switch to a Tmux session for a project" }
+  )
+
+  vim.api.nvim_create_user_command(
+    "TmuxSessions",
+    function()
+      M.tmux_sessions()
+    end,
+    { desc = "Switch to an existing Tmux session" }
+  )
 end
 
 return M
