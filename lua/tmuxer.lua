@@ -6,8 +6,8 @@ local project_cache = {}
 -- Default configuration
 M.config = {
   nvim_cmd = "nvim",
-  base_dirs = { "~/Documents/workspaces" },
-  excluded_dirs = { "archive", "node_modules", ".git", "vendor", "dist", "build" },
+  base_dirs = {},
+  excluded_dirs = {},
   max_depth = 3
 }
 
@@ -215,9 +215,27 @@ function M.setup(opts)
   -- Merge user config with defaults
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
   setup_telescope_picker()
+
+  -- Define custom commands
+  vim.api.nvim_create_user_command(
+    "WorkspaceOpen",
+    function()
+      require('telescope').extensions.tmuxer.tmuxer()
+    end,
+    { desc = "Create or switch Tmux session for a project" }
+  )
+
+  vim.api.nvim_create_user_command(
+    "TmuxSessions",
+    function()
+      require('telescope').extensions.tmuxer.tmux_sessions()
+    end,
+    { desc = "Switch between existing Tmux sessions" }
+  )
 end
 
 return M
+
 
 
 -- local M = {}
