@@ -193,6 +193,39 @@ function M.setup(opts)
     group = vim.api.nvim_create_augroup("TmuxerResize", { clear = true }),
     callback = update_column_width,
   })
+
+  -- Create commands
+  vim.api.nvim_create_user_command("WorkspaceOpen", function()
+    if #M.workspaces == 1 then
+      M.open_workspace_popup(M.workspaces[1])
+    else
+      -- Show workspace picker if multiple workspaces
+      pickers.new({}, {
+        prompt_title = "Select Workspace",
+        finder = finders.new_table {
+          results = M.workspaces,
+          entry_maker = function(entry)
+            return {
+              value = entry,
+              display = entry.name,
+              ordinal = entry.name,
+            }
+          end
+        },
+        sorter = conf.generic_sorter({}),
+        attach_mappings = function(prompt_bufnr)
+          actions.select_default:replace(function()
+            actions.close(prompt_bufnr)
+            local selection = action_state.get_selected_entry()
+            M.open_workspace_popup(selection.value)
+          end)
+          return true
+        end,
+      }):find()
+    end
+  end, {})
+
+  vim.api.nvim_create_user_command("TmuxSessions", M.tmux_sessions, {})
 end
 
 return M
