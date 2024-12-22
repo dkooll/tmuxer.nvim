@@ -6,60 +6,112 @@ local conf = require('telescope.config').values
 local actions = require('telescope.actions')
 local action_state = require('telescope.actions.state')
 
+-- Cache frequently used functions
+local execute = os.execute
+local systemlist = vim.fn.systemlist
+local fnamemodify = vim.fn.fnamemodify
+
 M.config = {
-  nvim_cmd = "nvim"
+  nvim_cmd = "nvim",
+  max_column_width = 50,
+  min_column_width = 1,
 }
 
 local function is_tmux_running()
   return vim.fn.exists('$TMUX') == 1
 end
 
+local function sanitize_session_name(name)
+  return string.lower(name):gsub("[^%w_]", "_")
+end
+
 local function create_tmux_session(session_name, project_path)
-  os.execute("tmux new-session -ds " .. session_name .. " -c " .. project_path)
+  local cmd = string.format("tmux new-session -ds %s -c %s", session_name, project_path)
+  if execute(cmd) ~= 0 then
+    error(string.format("Failed to create tmux session: %s", session_name))
+  end
 end
 
 local function run_nvim_in_session(session_name, project_path)
-  local create_cmd = string.format("tmux new-session -ds %s -c %s", session_name, project_path)
-  os.execute(create_cmd)
+  create_tmux_session(session_name, project_path)
 
   local send_cmd = string.format("tmux send-keys -t %s '%s' Enter", session_name, M.config.nvim_cmd)
-  os.execute(send_cmd)
+  if execute(send_cmd) ~= 0 then
+    error(string.format("Failed to send nvim command to session: %s", session_name))
+  end
 end
 
 local function switch_tmux_session(session_name)
-  os.execute("tmux switch-client -t " .. session_name)
+  local cmd = string.format("tmux switch-client -t %s", session_name)
+  if execute(cmd) ~= 0 then
+    error(string.format("Failed to switch to tmux session: %s", session_name))
+  end
+end
+
+local function kill_tmux_session(session_name)
+  local cmd = string.format("tmux kill-session -t %s", session_name)
+  if execute(cmd) ~= 0 then
+    error(string.format("Failed to kill tmux session: %s", session_name))
+  end
 end
 
 local function find_git_projects(workspace_path, max_depth)
+  -- Escape spaces in workspace path
+  local escaped_path = workspace_path:gsub(" ", "\\ ")
   local cmd = string.format(
     "find %s -type d -name .git -prune -maxdepth %d ! -path '*/archive/*'",
-    workspace_path,
+    escaped_path,
     max_depth
   )
-  local git_dirs = vim.fn.systemlist(cmd)
+
+  local git_dirs = systemlist(cmd)
+  if not git_dirs then return {} end
+
   local projects = {}
   for _, git_dir in ipairs(git_dirs) do
-    local project_path = vim.fn.fnamemodify(git_dir, ":h")
-    local project_name = vim.fn.fnamemodify(project_path, ":t")
-    local parent_dir = vim.fn.fnamemodify(project_path, ":h:t")
-    table.insert(projects, { name = project_name, path = project_path, parent = parent_dir })
+    local project_path = fnamemodify(git_dir, ":h")
+    local project_name = fnamemodify(project_path, ":t")
+    local parent_dir = fnamemodify(project_path, ":h:t")
+
+    -- Pre-compute lowercase values for sorting
+    local lower_parent = parent_dir:lower()
+    local lower_name = project_name:lower()
+
+    projects[#projects + 1] = {
+      name = project_name,
+      path = project_path,
+      parent = parent_dir,
+      lower_parent = lower_parent,
+      lower_name = lower_name
+    }
   end
+
   table.sort(projects, function(a, b)
-    if a.parent:lower() == b.parent:lower() then
-      return a.name:lower() < b.name:lower()
+    if a.lower_parent == b.lower_parent then
+      return a.lower_name < b.lower_name
     end
-    return a.parent:lower() < b.parent:lower()
+    return a.lower_parent < b.lower_parent
   end)
+
   return projects
 end
 
 function M.open_workspace_popup(workspace, _)
   if not is_tmux_running() then
-    print("Not in a tmux session")
+    vim.notify("Not in a tmux session", vim.log.levels.WARN)
+    return
+  end
+
+  if not workspace or not workspace.path then
+    vim.notify("Invalid workspace configuration", vim.log.levels.ERROR)
     return
   end
 
   local projects = find_git_projects(workspace.path, 3)
+  if #projects == 0 then
+    vim.notify("No git projects found in " .. workspace.path, vim.log.levels.INFO)
+    return
+  end
 
   pickers.new({}, {
     prompt_title = "Select a project in " .. workspace.name,
@@ -88,7 +140,7 @@ function M.open_workspace_popup(workspace, _)
           -- Multiple selections: create sessions in background
           for _, selection in ipairs(selections) do
             local project = selection.value
-            local session_name = string.lower(project.name):gsub("[^%w_]", "_")
+            local session_name = sanitize_session_name(project.name)
             create_tmux_session(session_name, project.path)
             print("Created tmux session: " .. session_name)
           end
@@ -96,7 +148,7 @@ function M.open_workspace_popup(workspace, _)
           -- Single selection: create session, send nvim command, and switch to it
           local selection = action_state.get_selected_entry()
           local project = selection.value
-          local session_name = string.lower(project.name):gsub("[^%w_]", "_")
+          local session_name = sanitize_session_name(project.name)
           run_nvim_in_session(session_name, project.path)
           switch_tmux_session(session_name)
           print("Created and switched to session: " .. session_name .. " with " .. M.config.nvim_cmd)
@@ -112,15 +164,20 @@ end
 
 function M.tmux_sessions()
   if not is_tmux_running() then
-    print("Not in a tmux session")
+    vim.notify("Not in a tmux session", vim.log.levels.WARN)
     return
   end
 
   local sessions = vim.fn.systemlist('tmux list-sessions -F "#{session_name}"')
+  if not sessions or #sessions == 0 then
+    vim.notify("No tmux sessions found", vim.log.levels.INFO)
+    return
+  end
+
   table.sort(sessions, function(a, b) return a:lower() < b:lower() end)
 
   pickers.new({}, {
-    prompt_title = "Switch Tmux Session",
+    prompt_title = "Switch Tmux Session (Ctrl-D to delete)",
     finder = finders.new_table {
       results = sessions,
       entry_maker = function(entry)
@@ -133,11 +190,47 @@ function M.tmux_sessions()
     },
     sorter = conf.generic_sorter({}),
     attach_mappings = function(prompt_bufnr)
+      -- Add delete session mapping
       actions.select_default:replace(function()
         actions.close(prompt_bufnr)
         local selection = action_state.get_selected_entry()
         switch_tmux_session(selection.value)
       end)
+
+      -- Add Ctrl-D mapping for deletion
+      vim.keymap.set("i", "<C-d>", function()
+        local selection = action_state.get_selected_entry()
+        if selection then
+          local current_session = vim.fn.systemlist("tmux display-message -p '#S'")[1]
+
+          -- Prevent deleting the current session
+          if selection.value == current_session then
+            vim.notify("Cannot delete current session", vim.log.levels.WARN)
+            return
+          end
+
+          -- Kill the session
+          local success, err = pcall(kill_tmux_session, selection.value)
+          if success then
+            vim.notify("Deleted session: " .. selection.value, vim.log.levels.INFO)
+
+            -- Remove the deleted session from the picker
+            local picker = action_state.get_current_picker(prompt_bufnr)
+            local new_results = vim.tbl_filter(function(item)
+              return item ~= selection.value
+            end, picker.finder.results)
+
+            -- Update picker with remaining sessions
+            picker:refresh(finders.new_table({
+              results = new_results,
+              entry_maker = picker.finder.entry_maker,
+            }))
+          else
+            vim.notify("Failed to delete session: " .. err, vim.log.levels.ERROR)
+          end
+        end
+      end, { buffer = prompt_bufnr })
+
       return true
     end,
   }):find()
