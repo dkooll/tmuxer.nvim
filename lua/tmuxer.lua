@@ -168,18 +168,18 @@ function M.tmux_sessions()
     return
   end
 
-  local sessions = vim.fn.systemlist('tmux list-sessions -F "#{session_name}"')
-  if not sessions or #sessions == 0 then
+  local tmux_sessions = vim.fn.systemlist('tmux list-sessions -F "#{session_name}"')
+  if not tmux_sessions or #tmux_sessions == 0 then
     vim.notify("No tmux sessions found", vim.log.levels.INFO)
     return
   end
 
-  table.sort(sessions, function(a, b) return a:lower() < b:lower() end)
+  table.sort(tmux_sessions, function(a, b) return a:lower() < b:lower() end)
 
   pickers.new({}, {
     prompt_title = "Switch Tmux Session (Ctrl-D to delete)",
     finder = finders.new_table {
-      results = sessions,
+      results = tmux_sessions,
       entry_maker = function(entry)
         return {
           value = entry,
@@ -190,44 +190,47 @@ function M.tmux_sessions()
     },
     sorter = conf.generic_sorter({}),
     attach_mappings = function(prompt_bufnr, map)
-      -- Add delete session mapping
       actions.select_default:replace(function()
         actions.close(prompt_bufnr)
         local selection = action_state.get_selected_entry()
         switch_tmux_session(selection.value)
       end)
 
-      -- Add Ctrl-D mapping for deletion
       map("n", "<C-d>", function()
+        local current_picker = action_state.get_current_picker(prompt_bufnr)
         local selection = action_state.get_selected_entry()
-        if selection then
-          local current_session = vim.fn.systemlist("tmux display-message -p '#S'")[1]
 
-          -- Prevent deleting the current session
-          if selection.value == current_session then
-            vim.notify("Cannot delete current session", vim.log.levels.WARN)
-            return
-          end
+        if not selection then return end
 
-          -- Kill the session
-          local success, err = pcall(kill_tmux_session, selection.value)
-          if success then
-            vim.notify("Deleted session: " .. selection.value, vim.log.levels.INFO)
+        local current_session = vim.fn.systemlist("tmux display-message -p '#S'")[1]
 
-            -- Remove the deleted session from the picker
-            local picker = action_state.get_current_picker(prompt_bufnr)
-            local new_results = vim.tbl_filter(function(item)
-              return item ~= selection.value
-            end, picker.finder.results)
+        if selection.value == current_session then
+          vim.notify("Cannot delete current session", vim.log.levels.WARN)
+          return
+        end
 
-            -- Update picker with remaining sessions
-            picker:refresh(finders.new_table({
-              results = new_results,
-              entry_maker = picker.finder.entry_maker,
-            }))
-          else
-            vim.notify("Failed to delete session: " .. err, vim.log.levels.ERROR)
-          end
+        -- Kill the session
+        local success, err = pcall(kill_tmux_session, selection.value)
+        if success then
+          -- Get updated session list
+          local updated_sessions = vim.fn.systemlist('tmux list-sessions -F "#{session_name}"') or {}
+          table.sort(updated_sessions, function(a, b) return a:lower() < b:lower() end)
+
+          -- Update the picker with new results
+          current_picker:refresh(finders.new_table({
+            results = updated_sessions,
+            entry_maker = function(entry)
+              return {
+                value = entry,
+                display = entry,
+                ordinal = entry,
+              }
+            end,
+          }), { reset_prompt = true })
+
+          vim.notify("Deleted session: " .. selection.value, vim.log.levels.INFO)
+        else
+          vim.notify("Failed to delete session: " .. err, vim.log.levels.ERROR)
         end
       end)
 
