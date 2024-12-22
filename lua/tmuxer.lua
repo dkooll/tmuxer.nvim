@@ -196,8 +196,9 @@ function M.tmux_sessions()
         switch_tmux_session(selection.value)
       end)
 
-      map("n", "<C-d>", function()
-        local current_picker = action_state.get_current_picker(prompt_bufnr)
+      -- Register a custom action for deleting sessions
+      local delete_session = function(bufnr)
+        local current_picker = action_state.get_current_picker(bufnr)
         local selection = action_state.get_selected_entry()
 
         if not selection then return end
@@ -212,6 +213,9 @@ function M.tmux_sessions()
         -- Kill the session
         local success, err = pcall(kill_tmux_session, selection.value)
         if success then
+          -- Remove the selection from telescope
+          actions.delete_selection(bufnr)
+
           -- Get updated session list
           local updated_sessions = vim.fn.systemlist('tmux list-sessions -F "#{session_name}"') or {}
           table.sort(updated_sessions, function(a, b) return a:lower() < b:lower() end)
@@ -232,7 +236,10 @@ function M.tmux_sessions()
         else
           vim.notify("Failed to delete session: " .. err, vim.log.levels.ERROR)
         end
-      end)
+      end
+
+      -- Map Ctrl-D to our custom delete action
+      map("n", "<C-d>", function() delete_session(prompt_bufnr) end)
 
       return true
     end,
