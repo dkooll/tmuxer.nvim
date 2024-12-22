@@ -196,7 +196,6 @@ function M.tmux_sessions()
         switch_tmux_session(selection.value)
       end)
 
-      -- Register a custom action for deleting sessions
       local delete_session = function(bufnr)
         local current_picker = action_state.get_current_picker(bufnr)
         local selection = action_state.get_selected_entry()
@@ -214,7 +213,9 @@ function M.tmux_sessions()
         local success, err = pcall(kill_tmux_session, selection.value)
         if success then
           -- Remove the selection from telescope
-          actions.delete_selection(bufnr)
+          current_picker:delete_selection(function(entry)
+            return entry.value == selection.value
+          end)
 
           -- Get updated session list
           local updated_sessions = vim.fn.systemlist('tmux list-sessions -F "#{session_name}"') or {}
