@@ -189,7 +189,7 @@ function M.tmux_sessions()
       end
     },
     sorter = conf.generic_sorter({}),
-    attach_mappings = function(prompt_bufnr)
+    attach_mappings = function(prompt_bufnr, map)
       -- Add delete session mapping
       actions.select_default:replace(function()
         actions.close(prompt_bufnr)
@@ -198,7 +198,7 @@ function M.tmux_sessions()
       end)
 
       -- Add Ctrl-D mapping for deletion
-      vim.keymap.set("i", "<C-d>", function()
+      map("n", "<C-d>", function()
         local selection = action_state.get_selected_entry()
         if selection then
           local current_session = vim.fn.systemlist("tmux display-message -p '#S'")[1]
@@ -229,7 +229,7 @@ function M.tmux_sessions()
             vim.notify("Failed to delete session: " .. err, vim.log.levels.ERROR)
           end
         end
-      end, { buffer = prompt_bufnr })
+      end)
 
       return true
     end,
