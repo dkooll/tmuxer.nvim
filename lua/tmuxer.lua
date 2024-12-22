@@ -6,9 +6,19 @@ local conf = require('telescope.config').values
 local actions = require('telescope.actions')
 local action_state = require('telescope.actions.state')
 
+-- Column width cache for performance
+local cached_column_width
+
 M.config = {
   nvim_cmd = "nvim"
 }
+
+-- Update column width based on current window size
+local function update_column_width()
+  local display_width = vim.o.columns - 4
+  cached_column_width = math.max(1, math.min(math.floor((display_width - 20) / 2), 50))
+  return cached_column_width
+end
 
 local function is_tmux_running()
   return vim.fn.exists('$TMUX') == 1
@@ -31,26 +41,54 @@ local function switch_tmux_session(session_name)
 end
 
 local function find_git_projects(workspace_path, max_depth)
-  local cmd = string.format(
-    "find %s -type d -name .git -prune -maxdepth %d ! -path '*/archive/*'",
-    workspace_path,
-    max_depth
-  )
-  local git_dirs = vim.fn.systemlist(cmd)
-  local projects = {}
-  for _, git_dir in ipairs(git_dirs) do
-    local project_path = vim.fn.fnamemodify(git_dir, ":h")
-    local project_name = vim.fn.fnamemodify(project_path, ":t")
-    local parent_dir = vim.fn.fnamemodify(project_path, ":h:t")
-    table.insert(projects, { name = project_name, path = project_path, parent = parent_dir })
+  -- Use fd if available for faster searching
+  local has_fd = vim.fn.executable('fd') == 1
+  local cmd
+  if has_fd then
+    cmd = string.format(
+      "fd -H -t d '^.git$' %s -d %d --exclude 'archive' -x echo {//}",
+      workspace_path,
+      max_depth
+    )
+  else
+    cmd = string.format(
+      "find %s -type d -name .git -prune -maxdepth %d ! -path '*/archive/*' -exec dirname {} \\;",
+      workspace_path,
+      max_depth
+    )
   end
-  table.sort(projects, function(a, b)
-    if a.parent:lower() == b.parent:lower() then
-      return a.name:lower() < b.name:lower()
+
+  local found_paths = vim.fn.systemlist(cmd)
+  local results = {}
+
+  -- Pre-compile patterns for better performance
+  local path_sep = package.config:sub(1,1)
+  local parent_pattern = "([^" .. path_sep .. "]+)" .. path_sep .. "[^" .. path_sep .. "]+$"
+  local name_pattern = "[^" .. path_sep .. "]+$"
+
+  for _, project_path in ipairs(found_paths) do
+    local project_name = project_path:match(name_pattern)
+    local parent_dir = project_path:match(parent_pattern)
+    if project_name and parent_dir then
+      table.insert(results, {
+        name = project_name,
+        path = project_path,
+        parent = parent_dir,
+        lower_name = project_name:lower(),
+        lower_parent = parent_dir:lower()
+      })
     end
-    return a.parent:lower() < b.parent:lower()
+  end
+
+  -- Sort with pre-computed lowercase values
+  table.sort(results, function(a, b)
+    if a.lower_parent == b.lower_parent then
+      return a.lower_name < b.lower_name
+    end
+    return a.lower_parent < b.lower_parent
   end)
-  return projects
+
+  return results
 end
 
 function M.open_workspace_popup(workspace, _)
@@ -117,7 +155,7 @@ function M.tmux_sessions()
   end
 
   local sessions = vim.fn.systemlist('tmux list-sessions -F "#{session_name}"')
-  table.sort(sessions, function(a, b) return a:lower() < b:lower() end)
+  table.sort(sessions)
 
   pickers.new({}, {
     prompt_title = "Switch Tmux Session",
@@ -144,10 +182,17 @@ function M.tmux_sessions()
 end
 
 function M.setup(opts)
-  if opts.nvim_cmd then
-    M.config.nvim_cmd = opts.nvim_cmd
-  end
+  M.config = vim.tbl_deep_extend("force", M.config, opts or {})
   M.workspaces = opts.workspaces or {}
+
+  -- Initial column width calculation
+  update_column_width()
+
+  -- Set up autocommand for window resize
+  vim.api.nvim_create_autocmd("VimResized", {
+    group = vim.api.nvim_create_augroup("TmuxerResize", { clear = true }),
+    callback = update_column_width,
+  })
 end
 
 return M
