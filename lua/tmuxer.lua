@@ -79,33 +79,41 @@ function M.merge_all_sessions()
 
   -- Build commands to create new session and move windows
   local cmds = {
+    -- Create a new session with a temporary window
     string.format("tmux new-session -d -s %s", merged_name)
   }
 
-  -- Move each session into the merged session as a window
+  -- Now for each session, move its window to the merged session
   for i, session in ipairs(sessions) do
+    -- Skip if it's the merged session itself
     if session ~= merged_name then
-      if i > 1 then
-        -- Create new window for sessions after the first
-        table.insert(cmds, string.format("tmux new-window -t %s", merged_name))
+      if i == 1 then
+        -- For first session, move it to window 1 (replacing temp window)
+        table.insert(cmds, string.format("tmux move-window -s %s:1 -t %s:1", session, merged_name))
+      else
+        -- For subsequent sessions, create a new window and move content there
+        local window_index = i
+        table.insert(cmds, string.format("tmux new-window -t %s:%d", merged_name, window_index))
+        table.insert(cmds, string.format("tmux move-window -s %s:1 -t %s:%d", session, merged_name, window_index))
       end
 
-      -- Move the session's content into the window
-      table.insert(cmds, string.format("tmux move-window -s %s:1 -t %s", session, merged_name))
-
-      -- Kill the original session
+      -- Kill the original session after moving its window
       table.insert(cmds, string.format("tmux kill-session -t %s", session))
     end
   end
 
-  -- Switch to the merged session and first window
+  -- Switch to the merged session and select first window
   table.insert(cmds, string.format("tmux switch-client -t %s:1", merged_name))
 
-  -- Execute all commands at once
+  -- Execute all commands at once and ensure success
   local cmd = table.concat(cmds, " && ")
-  vim.fn.system(cmd)
+  local result = vim.fn.system(cmd)
 
-  print(string.format("Merged %d sessions into: %s", #sessions, merged_name))
+  if vim.v.shell_error == 0 then
+    print(string.format("Merged %d sessions into: %s", #sessions, merged_name))
+  else
+    print("Failed to merge sessions: " .. result)
+  end
 end
 
 function M.open_workspace_popup(workspace)
