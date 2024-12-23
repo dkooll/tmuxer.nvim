@@ -31,13 +31,44 @@ local function switch_tmux_session(session_name)
   os.execute("tmux switch-client -t " .. session_name)
 end
 
+-- Fast merge function for selected sessions
+function M.merge_selected_sessions()
+  if #M.selected_sessions == 0 then
+    print("No sessions selected. Use <leader>ts and Tab to select sessions first.")
+    return
+  end
+
+  -- Create new session name
+  local merged_name = "merged_" .. os.time()
+
+  -- Create a new session and immediately detach
+  vim.fn.system(string.format("tmux new-session -d -s %s", merged_name))
+
+  -- Join all selected sessions as panes
+  for i, session in ipairs(M.selected_sessions) do
+    if i == 1 then
+      -- For first session, just move its contents to the new session
+      vim.fn.system(string.format("tmux join-pane -s %s:0.0 -t %s:0", session, merged_name))
+    else
+      -- For subsequent sessions, split and join
+      vim.fn.system(string.format("tmux split-window -v -t %s", merged_name))
+      vim.fn.system(string.format("tmux join-pane -s %s:0.0 -t %s", session, merged_name))
+    end
+  end
+
+  -- Switch to the new merged session
+  switch_tmux_session(merged_name)
+  print(string.format("Merged %d sessions into: %s", #M.selected_sessions, merged_name))
+
+  -- Clear selections
+  M.selected_sessions = {}
+end
+
 -- Async version of create_tmux_session
 local function create_tmux_session(session_name, project_path, callback)
   vim.fn.jobstart({"tmux", "new-session", "-ds", session_name, "-c", project_path}, {
     on_exit = function(_, _)
-      if callback then
-        callback()
-      end
+      if callback then callback() end
     end
   })
 end
@@ -47,9 +78,7 @@ local function run_nvim_in_session(session_name, project_path, callback)
   create_tmux_session(session_name, project_path, function()
     vim.fn.jobstart({"tmux", "send-keys", "-t", session_name, M.config.nvim_cmd, "Enter"}, {
       on_exit = function(_, _)
-        if callback then
-          callback()
-        end
+        if callback then callback() end
       end
     })
   end)
@@ -104,79 +133,6 @@ local function find_git_projects(workspace_path, max_depth)
   end)
 
   return results
-end
-
-function M.merge_selected_sessions()
-  if #M.selected_sessions == 0 then
-    print("No sessions selected. Use <leader>ts and Tab to select sessions first.")
-    return
-  end
-
-  -- Create the merged session name
-  local merged_name = "merged_" .. os.time()
-
-  -- Build a single command that creates the session and joins all panes
-  local cmd = {"tmux"}
-
-  -- Start with creating the new session
-  table.insert(cmd, "new-session")
-  table.insert(cmd, "-d")
-  table.insert(cmd, "-s")
-  table.insert(cmd, merged_name)
-  table.insert(cmd, ";")
-
-  -- Calculate layout based on number of sessions
-  local layout
-  if #M.selected_sessions <= 2 then
-    layout = "even-vertical"
-  else
-    layout = "tiled"
-  end
-
-  -- For each additional session, split and join in one go
-  for i, session in ipairs(M.selected_sessions) do
-    if i > 1 then
-      -- Split window with optimal layout
-      table.insert(cmd, "split-window")
-      table.insert(cmd, "-t")
-      table.insert(cmd, merged_name)
-      table.insert(cmd, "-f")  -- Full width/height split
-      table.insert(cmd, ";")
-
-      -- Move content from original session
-      table.insert(cmd, "join-pane")
-      table.insert(cmd, "-s")
-      table.insert(cmd, session .. ":0.0")
-      table.insert(cmd, "-t")
-      table.insert(cmd, merged_name)
-      table.insert(cmd, ";")
-    else
-      -- For first session, just join its content
-      table.insert(cmd, "join-pane")
-      table.insert(cmd, "-s")
-      table.insert(cmd, session .. ":0.0")
-      table.insert(cmd, "-t")
-      table.insert(cmd, merged_name)
-      table.insert(cmd, ";")
-    end
-  end
-
-  -- Select the layout at the end
-  table.insert(cmd, "select-layout")
-  table.insert(cmd, "-t")
-  table.insert(cmd, merged_name)
-  table.insert(cmd, layout)
-
-  -- Execute the combined command
-  vim.fn.jobstart(cmd, {
-    on_exit = function()
-      -- Switch to the merged session
-      switch_tmux_session(merged_name)
-      print(string.format("Merged %d sessions into: %s", #M.selected_sessions, merged_name))
-      -- Clear the selections after merging
-      M.selected_sessions = {}
-    end
-  })
 end
 
 function M.open_workspace_popup(workspace, _)
