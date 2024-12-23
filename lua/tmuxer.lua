@@ -6,32 +6,43 @@ local conf = require('telescope.config').values
 local actions = require('telescope.actions')
 local action_state = require('telescope.actions.state')
 
--- Column width cache for performance
-local cached_column_width
+-- Store selected sessions globally
+M.selected_sessions = {}
 
 M.config = {
   nvim_cmd = "nvim"
 }
-
--- Store selected sessions globally
-M.selected_sessions = {}
-
--- Update column width based on current window size
-local function update_column_width()
-  local display_width = vim.o.columns - 4
-  cached_column_width = math.max(1, math.min(math.floor((display_width - 20) / 2), 50))
-  return cached_column_width
-end
 
 local function is_tmux_running()
   return vim.fn.exists('$TMUX') == 1
 end
 
 local function switch_tmux_session(session_name)
-  os.execute("tmux switch-client -t " .. session_name)
+  vim.fn.system(string.format("tmux switch-client -t %s", session_name))
 end
 
--- Fast merge function for selected sessions
+local function create_tmux_session(session_name, project_path, callback)
+  vim.fn.jobstart({"tmux", "new-session", "-ds", session_name, "-c", project_path}, {
+    on_exit = function(_, _)
+      if callback then
+        callback()
+      end
+    end
+  })
+end
+
+local function run_nvim_in_session(session_name, project_path, callback)
+  create_tmux_session(session_name, project_path, function()
+    vim.fn.jobstart({"tmux", "send-keys", "-t", session_name, M.config.nvim_cmd, "Enter"}, {
+      on_exit = function(_, _)
+        if callback then
+          callback()
+        end
+      end
+    })
+  end)
+end
+
 function M.merge_selected_sessions()
   if #M.selected_sessions == 0 then
     print("No sessions selected. Use <leader>ts and Tab to select sessions first.")
@@ -44,14 +55,14 @@ function M.merge_selected_sessions()
   -- Create a new session and immediately detach
   vim.fn.system(string.format("tmux new-session -d -s %s", merged_name))
 
-  -- Join all selected sessions as panes
+  -- Join all selected sessions as vertical panes
   for i, session in ipairs(M.selected_sessions) do
     if i == 1 then
       -- For first session, just move its contents to the new session
       vim.fn.system(string.format("tmux join-pane -s %s:0.0 -t %s:0", session, merged_name))
     else
-      -- For subsequent sessions, split and join
-      vim.fn.system(string.format("tmux split-window -v -t %s", merged_name))
+      -- For subsequent sessions, split vertically and join
+      vim.fn.system(string.format("tmux split-window -h -t %s", merged_name))
       vim.fn.system(string.format("tmux join-pane -s %s:0.0 -t %s", session, merged_name))
     end
   end
@@ -60,32 +71,11 @@ function M.merge_selected_sessions()
   switch_tmux_session(merged_name)
   print(string.format("Merged %d sessions into: %s", #M.selected_sessions, merged_name))
 
-  -- Clear selections
+  -- Clear selections after merging
   M.selected_sessions = {}
 end
 
--- Async version of create_tmux_session
-local function create_tmux_session(session_name, project_path, callback)
-  vim.fn.jobstart({"tmux", "new-session", "-ds", session_name, "-c", project_path}, {
-    on_exit = function(_, _)
-      if callback then callback() end
-    end
-  })
-end
-
--- Async version of run_nvim_in_session
-local function run_nvim_in_session(session_name, project_path, callback)
-  create_tmux_session(session_name, project_path, function()
-    vim.fn.jobstart({"tmux", "send-keys", "-t", session_name, M.config.nvim_cmd, "Enter"}, {
-      on_exit = function(_, _)
-        if callback then callback() end
-      end
-    })
-  end)
-end
-
 local function find_git_projects(workspace_path, max_depth)
-  -- Use fd if available for faster searching
   local has_fd = vim.fn.executable('fd') == 1
   local cmd
   if has_fd then
@@ -104,8 +94,6 @@ local function find_git_projects(workspace_path, max_depth)
 
   local found_paths = vim.fn.systemlist(cmd)
   local results = {}
-
-  -- Pre-compile patterns for better performance
   local path_sep = package.config:sub(1,1)
   local parent_pattern = "([^" .. path_sep .. "]+)" .. path_sep .. "[^" .. path_sep .. "]+$"
   local name_pattern = "[^" .. path_sep .. "]+$"
@@ -124,7 +112,6 @@ local function find_git_projects(workspace_path, max_depth)
     end
   end
 
-  -- Sort with pre-computed lowercase values
   table.sort(results, function(a, b)
     if a.lower_parent == b.lower_parent then
       return a.lower_name < b.lower_name
@@ -148,14 +135,9 @@ function M.open_workspace_popup(workspace, _)
     finder = finders.new_table {
       results = projects,
       entry_maker = function(entry)
-        local display_width = vim.o.columns - 4
-        local column_width = math.floor((display_width - 20) / 2)
-        column_width = math.max(1, math.min(column_width, 50))
-        local name_format = "%-" .. column_width .. "." .. column_width .. "s"
-        local parent_format = "%-" .. column_width .. "." .. column_width .. "s"
         return {
           value = entry,
-          display = string.format(name_format .. "                    " .. parent_format, entry.name, entry.parent),
+          display = string.format("%-30.30s    %-30.30s", entry.name, entry.parent),
           ordinal = entry.parent .. " " .. entry.name,
         }
       end
@@ -243,24 +225,13 @@ function M.tmux_sessions()
 end
 
 function M.setup(opts)
-  M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+  M.config = vim.tbl.deep_extend("force", M.config, opts or {})
   M.workspaces = opts.workspaces or {}
 
-  -- Initial column width calculation
-  update_column_width()
-
-  -- Set up autocommand for window resize
-  vim.api.nvim_create_autocmd("VimResized", {
-    group = vim.api.nvim_create_augroup("TmuxerResize", { clear = true }),
-    callback = update_column_width,
-  })
-
-  -- Create commands
   vim.api.nvim_create_user_command("WorkspaceOpen", function()
     if #M.workspaces == 1 then
       M.open_workspace_popup(M.workspaces[1])
     else
-      -- Show workspace picker if multiple workspaces
       pickers.new({}, {
         prompt_title = "Select Workspace",
         finder = finders.new_table {
