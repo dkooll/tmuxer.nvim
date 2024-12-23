@@ -127,7 +127,7 @@ function M.tmux_sessions()
   table.sort(sessions)
 
   pickers.new({}, {
-    prompt_title = "Sessions (Tab:select, M:merge)",
+    prompt_title = "Sessions (Tab:select, Ctrl+v:merge)",
     finder = finders.new_table {
       results = sessions,
       entry_maker = function(entry)
@@ -140,25 +140,38 @@ function M.tmux_sessions()
     },
     sorter = conf.generic_sorter({}),
     attach_mappings = function(prompt_bufnr)
-      -- Enter key behavior
+      -- Regular Enter behavior for switching to a session
       actions.select_default:replace(function()
-        local selection = action_state.get_selected_entry()
-        if selection then
-          switch_tmux_session(selection.value)
+        local picker = action_state.get_current_picker(prompt_bufnr)
+        local selections = picker:get_multi_selection()
+
+        if #selections > 0 then
+          -- Create background sessions when using Enter
+          for _, selection in ipairs(selections) do
+            print(string.format("Selected session: %s", selection.value))
+          end
+        else
+          -- Single selection switches to that session
+          local selection = action_state.get_selected_entry()
+          if selection then
+            switch_tmux_session(selection.value)
+          end
         end
         actions.close(prompt_bufnr)
       end)
 
-      -- Add 'M' key to merge sessions
+      -- Map Ctrl+v to merge sessions
       vim.api.nvim_buf_set_keymap(
         prompt_bufnr,
         "i",
-        "M",
+        "<C-v>",
         "<cmd>lua require('telescope.actions.state').get_current_picker(prompt_bufnr):get_multi_selection() " ..
         "| lua local selections = require('telescope.actions.state').get_current_picker(prompt_bufnr):get_multi_selection(); " ..
-        "local sessions = vim.tbl_map(function(selection) return selection.value end, selections); " ..
-        "require('tmuxer').merge_sessions(sessions); " ..
-        "require('telescope.actions').close(prompt_bufnr)<cr>",
+        "if #selections > 0 then " ..
+        "  local sessions = vim.tbl_map(function(selection) return selection.value end, selections); " ..
+        "  require('tmuxer').merge_sessions(sessions); " ..
+        "  require('telescope.actions').close(prompt_bufnr) " ..
+        "end<cr>",
         { noremap = true, silent = true }
       )
 
