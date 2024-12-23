@@ -88,37 +88,32 @@ function M.merge_all_sessions()
     return
   end
 
-  -- Create new merged session
+  -- Create new merged session name
   local merged_name = "merged_" .. os.time()
 
   -- Build all commands into a single string for faster execution
   local cmds = {
-    -- Create new session in detached state
-    string.format("tmux new-session -d -s %s", merged_name)
+    -- Create new session in detached state with a temporary window
+    string.format("tmux new-session -d -s %s -n temp", merged_name)
   }
 
-  -- Kill the first window that gets created automatically
-  table.insert(cmds, string.format("tmux kill-window -t %s:1", merged_name))
-
-  -- Move each existing session to a new pane in the merged session
+  -- Move each existing session to a new window in the merged session
   for i, session in ipairs(sessions) do
     -- Skip if it's the merged session itself
     if session ~= merged_name then
-      if i == 1 then
-        -- For the first session, create a new window
-        table.insert(cmds, string.format("tmux new-window -t %s -n merged", merged_name))
-        table.insert(cmds, string.format("tmux move-window -s %s:1 -t %s:1", merged_name, merged_name))
-        table.insert(cmds, string.format("tmux join-pane -s %s:1 -t %s:1", session, merged_name))
-      else
-        -- For subsequent sessions, split vertically and join
-        table.insert(cmds, string.format("tmux split-window -h -t %s:1", merged_name))
-        table.insert(cmds, string.format("tmux join-pane -s %s:1 -t %s:1", session, merged_name))
-      end
+      -- Link the first window of each session as a new window in merged session
+      table.insert(cmds, string.format("tmux link-window -s %s:1 -t %s", session, merged_name))
     end
   end
 
+  -- Remove the temporary first window
+  table.insert(cmds, string.format("tmux kill-window -t %s:1", merged_name))
+
   -- Switch to the merged session
   table.insert(cmds, string.format("tmux switch-client -t %s", merged_name))
+
+  -- Select the first window
+  table.insert(cmds, string.format("tmux select-window -t %s:1", merged_name))
 
   -- Execute all commands at once
   local cmd = table.concat(cmds, " && ")
