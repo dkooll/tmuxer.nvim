@@ -13,6 +13,23 @@ M.config = {
   nvim_cmd = "nvim"
 }
 
+-- Notification helper functions
+local function notify_success(session_name, msg)
+  vim.notify(
+    string.format("session %s %s", session_name, msg),
+    vim.log.levels.INFO,
+    { title = "Tmuxer" }
+  )
+end
+
+local function notify_error(session_name, msg)
+  vim.notify(
+    string.format("session %s %s", session_name, msg),
+    vim.log.levels.ERROR,
+    { title = "Tmuxer" }
+  )
+end
+
 -- Update column width based on current window size
 local function update_column_width()
   local display_width = vim.o.columns - 4
@@ -24,32 +41,58 @@ local function is_tmux_running()
   return vim.fn.exists('$TMUX') == 1
 end
 
--- Async version of create_tmux_session
+-- Async version of create_tmux_session with error handling
 local function create_tmux_session(session_name, project_path, callback)
   vim.fn.jobstart({ "tmux", "new-session", "-ds", session_name, "-c", project_path }, {
-    on_exit = function(_, _)
-      if callback then
-        callback()
+    on_exit = function(_, exit_code)
+      if exit_code == 0 then
+        if callback then
+          callback(true)
+        end
+      else
+        notify_error(session_name, "creation failed")
+        if callback then
+          callback(false)
+        end
       end
     end
   })
 end
 
--- Async version of run_nvim_in_session
+-- Async version of run_nvim_in_session with error handling
 local function run_nvim_in_session(session_name, project_path, callback)
-  create_tmux_session(session_name, project_path, function()
-    vim.fn.jobstart({ "tmux", "send-keys", "-t", session_name, M.config.nvim_cmd, "Enter" }, {
-      on_exit = function(_, _)
-        if callback then
-          callback()
+  create_tmux_session(session_name, project_path, function(success)
+    if success then
+      vim.fn.jobstart({ "tmux", "send-keys", "-t", session_name, M.config.nvim_cmd, "Enter" }, {
+        on_exit = function(_, exit_code)
+          if exit_code == 0 then
+            notify_success(session_name, "created successfully")
+            if callback then
+              callback(true)
+            end
+          else
+            notify_error(session_name, "nvim start failed")
+            if callback then
+              callback(false)
+            end
+          end
         end
+      })
+    else
+      if callback then
+        callback(false)
       end
-    })
+    end
   end)
 end
 
 local function switch_tmux_session(session_name)
-  os.execute("tmux switch-client -t " .. session_name)
+  local result = os.execute("tmux switch-client -t " .. session_name)
+  if result then
+    notify_success(session_name, "switched successfully")
+  else
+    notify_error(session_name, "switch failed")
+  end
 end
 
 local function find_git_projects(workspace_path, max_depth)
@@ -105,11 +148,16 @@ end
 
 function M.open_workspace_popup(workspace, _)
   if not is_tmux_running() then
-    print("Not in a tmux session")
+    notify_error("tmux", "not running")
     return
   end
 
   local projects = find_git_projects(workspace.path, 3)
+
+  if #projects == 0 then
+    notify_error("workspace", "no git projects found")
+    return
+  end
 
   pickers.new({}, {
     prompt_title = "Select a project in " .. workspace.name,
@@ -146,9 +194,11 @@ function M.open_workspace_popup(workspace, _)
             local session_name = string.lower(project.name):gsub("[^%w_]", "_")
 
             -- Use run_nvim_in_session for both single and multiple selections
-            run_nvim_in_session(session_name, project.path, function()
+            run_nvim_in_session(session_name, project.path, function(success)
               completed = completed + 1
-              print(string.format("Created tmux session with nvim (%d/%d): %s", completed, total, session_name))
+              if success then
+                notify_success(session_name, string.format("created successfully (%d/%d)", completed, total))
+              end
             end)
           end
         else
@@ -156,9 +206,10 @@ function M.open_workspace_popup(workspace, _)
           local selection = action_state.get_selected_entry()
           local project = selection.value
           local session_name = string.lower(project.name):gsub("[^%w_]", "_")
-          run_nvim_in_session(session_name, project.path, function()
-            switch_tmux_session(session_name)
-            print("Created and switched to session: " .. session_name .. " with " .. M.config.nvim_cmd)
+          run_nvim_in_session(session_name, project.path, function(success)
+            if success then
+              switch_tmux_session(session_name)
+            end
           end)
         end
       end)
@@ -170,11 +221,17 @@ end
 
 function M.tmux_sessions()
   if not is_tmux_running() then
-    print("Not in a tmux session")
+    notify_error("tmux", "not running")
     return
   end
 
   local sessions = vim.fn.systemlist('tmux list-sessions -F "#{session_name}"')
+
+  if #sessions == 0 then
+    notify_error("tmux", "no active sessions")
+    return
+  end
+
   table.sort(sessions)
 
   pickers.new({}, {
@@ -389,16 +446,18 @@ return M
 --         actions.close(prompt_bufnr)
 --
 --         if #selections > 0 then
---           -- Multiple selections: create sessions in background asynchronously
+--           -- Multiple selections: create sessions and start nvim in background asynchronously
 --           local completed = 0
 --           local total = #selections
 --
 --           for _, selection in ipairs(selections) do
 --             local project = selection.value
 --             local session_name = string.lower(project.name):gsub("[^%w_]", "_")
---             create_tmux_session(session_name, project.path, function()
+--
+--             -- Use run_nvim_in_session for both single and multiple selections
+--             run_nvim_in_session(session_name, project.path, function()
 --               completed = completed + 1
---               print(string.format("Created tmux session (%d/%d): %s", completed, total, session_name))
+--               print(string.format("Created tmux session with nvim (%d/%d): %s", completed, total, session_name))
 --             end)
 --           end
 --         else
