@@ -14,38 +14,13 @@ local function is_tmux_running()
   return vim.fn.exists('$TMUX') == 1
 end
 
-local function merge_sessions(sessions)
-  if #sessions == 0 then return end
-
-  local merged_name = "merged_" .. os.time()
-  local cmds = {
-    string.format("tmux new-session -d -s %s", merged_name)
-  }
-
-  for i, session in ipairs(sessions) do
-    if i == 1 then
-      table.insert(cmds, string.format("tmux join-pane -s %s:0.0 -t %s:0", session, merged_name))
-    else
-      table.insert(cmds, string.format("tmux split-window -h -t %s", merged_name))
-      table.insert(cmds, string.format("tmux join-pane -s %s:0.0 -t %s", session, merged_name))
-    end
-  end
-
-  -- Join all commands and execute at once for speed
-  local cmd = table.concat(cmds, " && ")
-  vim.fn.system(cmd)
-
-  -- Switch to merged session
-  vim.fn.system(string.format("tmux switch-client -t %s", merged_name))
+local function switch_tmux_session(session_name)
+  vim.fn.system(string.format("tmux switch-client -t %s", session_name))
 end
 
 local function create_tmux_session(session_name, project_path)
   vim.fn.system(string.format("tmux new-session -d -s %s -c %s", session_name, project_path))
   vim.fn.system(string.format("tmux send-keys -t %s '%s' Enter", session_name, M.config.nvim_cmd))
-end
-
-local function switch_tmux_session(session_name)
-  vim.fn.system(string.format("tmux switch-client -t %s", session_name))
 end
 
 local function find_git_projects(workspace_path, max_depth)
@@ -108,12 +83,23 @@ function M.open_workspace_popup(workspace)
     attach_mappings = function(prompt_bufnr)
       actions.select_default:replace(function()
         actions.close(prompt_bufnr)
-        local selection = action_state.get_selected_entry()
-        local project = selection.value
-        local session_name = project.name:gsub("[^%w_]", "_"):lower()
+        local picker = action_state.get_current_picker(prompt_bufnr)
+        local selections = picker:get_multi_selection()
 
-        create_tmux_session(session_name, project.path)
-        switch_tmux_session(session_name)
+        if #selections > 0 then
+          for _, selection in ipairs(selections) do
+            local project = selection.value
+            local session_name = project.name:gsub("[^%w_]", "_"):lower()
+            create_tmux_session(session_name, project.path)
+            print(string.format("Created session: %s", session_name))
+          end
+        else
+          local selection = action_state.get_selected_entry()
+          local project = selection.value
+          local session_name = project.name:gsub("[^%w_]", "_"):lower()
+          create_tmux_session(session_name, project.path)
+          switch_tmux_session(session_name)
+        end
       end)
       return true
     end,
@@ -127,7 +113,7 @@ function M.tmux_sessions()
   table.sort(sessions)
 
   pickers.new({}, {
-    prompt_title = "Sessions (Tab:select, Ctrl+v:merge)",
+    prompt_title = "Sessions (Tab:select, Ctrl-g:merge selected)",
     finder = finders.new_table {
       results = sessions,
       entry_maker = function(entry)
@@ -140,47 +126,44 @@ function M.tmux_sessions()
     },
     sorter = conf.generic_sorter({}),
     attach_mappings = function(prompt_bufnr)
-      -- Regular Enter behavior for switching to a session
-      actions.select_default:replace(function()
-        local picker = action_state.get_current_picker(prompt_bufnr)
-        local selections = picker:get_multi_selection()
-
-        if #selections > 0 then
-          -- Create background sessions when using Enter
-          for _, selection in ipairs(selections) do
-            print(string.format("Selected session: %s", selection.value))
-          end
-        else
-          -- Single selection switches to that session
-          local selection = action_state.get_selected_entry()
-          if selection then
-            switch_tmux_session(selection.value)
-          end
-        end
-        actions.close(prompt_bufnr)
-      end)
-
-      -- Map Ctrl+v to merge sessions
+      -- Map Ctrl-g to merge sessions
       vim.api.nvim_buf_set_keymap(
         prompt_bufnr,
         "i",
-        "<C-v>",
-        "<cmd>lua require('telescope.actions.state').get_current_picker(prompt_bufnr):get_multi_selection() " ..
-        "| lua local selections = require('telescope.actions.state').get_current_picker(prompt_bufnr):get_multi_selection(); " ..
+        "<C-g>",
+        "<cmd>lua local picker = require('telescope.actions.state').get_current_picker(prompt_bufnr); " ..
+        "local selections = picker:get_multi_selection(); " ..
         "if #selections > 0 then " ..
-        "  local sessions = vim.tbl_map(function(selection) return selection.value end, selections); " ..
-        "  require('tmuxer').merge_sessions(sessions); " ..
-        "  require('telescope.actions').close(prompt_bufnr) " ..
+        "  local sessions = vim.tbl_map(function(s) return s.value end, selections); " ..
+        "  local merged = 'merged_' .. os.time(); " ..
+        "  vim.fn.system('tmux new-session -d -s ' .. merged); " ..
+        "  for i, sess in ipairs(sessions) do " ..
+        "    if i == 1 then " ..
+        "      vim.fn.system('tmux join-pane -s ' .. sess .. ':0.0 -t ' .. merged .. ':0'); " ..
+        "    else " ..
+        "      vim.fn.system('tmux split-window -h -t ' .. merged); " ..
+        "      vim.fn.system('tmux join-pane -s ' .. sess .. ':0.0 -t ' .. merged); " ..
+        "    end; " ..
+        "  end; " ..
+        "  vim.fn.system('tmux switch-client -t ' .. merged); " ..
+        "  require('telescope.actions').close(prompt_bufnr); " ..
         "end<cr>",
         { noremap = true, silent = true }
       )
+
+      -- Regular Enter behavior
+      actions.select_default:replace(function()
+        local selection = action_state.get_selected_entry()
+        if selection then
+          switch_tmux_session(selection.value)
+        end
+        actions.close(prompt_bufnr)
+      end)
 
       return true
     end,
   }):find()
 end
-
-M.merge_sessions = merge_sessions  -- Expose for the keymap
 
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
