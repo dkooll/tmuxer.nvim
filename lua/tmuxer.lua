@@ -14,26 +14,13 @@ local function is_tmux_running()
   return vim.fn.exists('$TMUX') == 1
 end
 
-local function create_tmux_session(session_name, project_path, callback)
-  vim.fn.jobstart({"tmux", "new-session", "-ds", session_name, "-c", project_path}, {
-    on_exit = function(_, _)
-      if callback then callback() end
-    end
-  })
-end
-
-local function run_nvim_in_session(session_name, project_path, callback)
-  create_tmux_session(session_name, project_path, function()
-    vim.fn.jobstart({"tmux", "send-keys", "-t", session_name, M.config.nvim_cmd, "Enter"}, {
-      on_exit = function(_, _)
-        if callback then callback() end
-      end
-    })
-  end)
-end
-
 local function switch_tmux_session(session_name)
   vim.fn.system(string.format("tmux switch-client -t %s", session_name))
+end
+
+local function create_tmux_session(session_name, project_path)
+  vim.fn.system(string.format("tmux new-session -d -s %s -c %s", session_name, project_path))
+  vim.fn.system(string.format("tmux send-keys -t %s '%s' Enter", session_name, M.config.nvim_cmd))
 end
 
 local function find_git_projects(workspace_path, max_depth)
@@ -81,7 +68,6 @@ function M.merge_all_sessions()
     return
   end
 
-  -- Get current tmux sessions
   local sessions = vim.fn.systemlist('tmux list-sessions -F "#{session_name}"')
   if #sessions <= 1 then
     print("No sessions to merge")
@@ -91,29 +77,29 @@ function M.merge_all_sessions()
   -- Create new merged session name
   local merged_name = "merged_" .. os.time()
 
-  -- Build all commands into a single string for faster execution
+  -- Build commands to create new session and move windows
   local cmds = {
-    -- Create new session in detached state with a temporary window
-    string.format("tmux new-session -d -s %s -n temp", merged_name)
+    string.format("tmux new-session -d -s %s", merged_name)
   }
 
-  -- Move each existing session to a new window in the merged session
+  -- Move each session into the merged session as a window
   for i, session in ipairs(sessions) do
-    -- Skip if it's the merged session itself
     if session ~= merged_name then
-      -- Link the first window of each session as a new window in merged session
-      table.insert(cmds, string.format("tmux link-window -s %s:1 -t %s", session, merged_name))
+      if i > 1 then
+        -- Create new window for sessions after the first
+        table.insert(cmds, string.format("tmux new-window -t %s", merged_name))
+      end
+
+      -- Move the session's content into the window
+      table.insert(cmds, string.format("tmux move-window -s %s:1 -t %s", session, merged_name))
+
+      -- Kill the original session
+      table.insert(cmds, string.format("tmux kill-session -t %s", session))
     end
   end
 
-  -- Remove the temporary first window
-  table.insert(cmds, string.format("tmux kill-window -t %s:1", merged_name))
-
-  -- Switch to the merged session
-  table.insert(cmds, string.format("tmux switch-client -t %s", merged_name))
-
-  -- Select the first window
-  table.insert(cmds, string.format("tmux select-window -t %s:1", merged_name))
+  -- Switch to the merged session and first window
+  table.insert(cmds, string.format("tmux switch-client -t %s:1", merged_name))
 
   -- Execute all commands at once
   local cmd = table.concat(cmds, " && ")
@@ -151,25 +137,18 @@ function M.open_workspace_popup(workspace)
         actions.close(prompt_bufnr)
 
         if #selections > 0 then
-          local completed = 0
-          local total = #selections
-
           for _, selection in ipairs(selections) do
             local project = selection.value
             local session_name = string.lower(project.name):gsub("[^%w_]", "_")
-            create_tmux_session(session_name, project.path, function()
-              completed = completed + 1
-              print(string.format("Created tmux session (%d/%d): %s", completed, total, session_name))
-            end)
+            create_tmux_session(session_name, project.path)
+            print(string.format("Created session: %s", session_name))
           end
         else
           local selection = action_state.get_selected_entry()
           local project = selection.value
           local session_name = string.lower(project.name):gsub("[^%w_]", "_")
-          run_nvim_in_session(session_name, project.path, function()
-            switch_tmux_session(session_name)
-            print("Created and switched to session: " .. session_name .. " with " .. M.config.nvim_cmd)
-          end)
+          create_tmux_session(session_name, project.path)
+          switch_tmux_session(session_name)
         end
       end)
       return true
