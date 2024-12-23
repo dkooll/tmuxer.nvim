@@ -14,16 +14,10 @@ local function is_tmux_running()
   return vim.fn.exists('$TMUX') == 1
 end
 
-local function switch_tmux_session(session_name)
-  os.execute("tmux switch-client -t " .. session_name)
-end
-
 local function create_tmux_session(session_name, project_path, callback)
   vim.fn.jobstart({"tmux", "new-session", "-ds", session_name, "-c", project_path}, {
     on_exit = function(_, _)
-      if callback then
-        callback()
-      end
+      if callback then callback() end
     end
   })
 end
@@ -32,18 +26,19 @@ local function run_nvim_in_session(session_name, project_path, callback)
   create_tmux_session(session_name, project_path, function()
     vim.fn.jobstart({"tmux", "send-keys", "-t", session_name, M.config.nvim_cmd, "Enter"}, {
       on_exit = function(_, _)
-        if callback then
-          callback()
-        end
+        if callback then callback() end
       end
     })
   end)
 end
 
+local function switch_tmux_session(session_name)
+  vim.fn.system(string.format("tmux switch-client -t %s", session_name))
+end
+
 local function find_git_projects(workspace_path, max_depth)
-  local has_fd = vim.fn.executable('fd') == 1
   local cmd
-  if has_fd then
+  if vim.fn.executable('fd') == 1 then
     cmd = string.format(
       "fd -H -t d '^.git$' %s -d %d --exclude 'archive' -x echo {//}",
       workspace_path,
@@ -57,31 +52,24 @@ local function find_git_projects(workspace_path, max_depth)
     )
   end
 
-  local found_paths = vim.fn.systemlist(cmd)
+  local paths = vim.fn.systemlist(cmd)
   local results = {}
   local path_sep = package.config:sub(1,1)
-  local parent_pattern = "([^" .. path_sep .. "]+)" .. path_sep .. "[^" .. path_sep .. "]+$"
   local name_pattern = "[^" .. path_sep .. "]+$"
 
-  for _, project_path in ipairs(found_paths) do
-    local project_name = project_path:match(name_pattern)
-    local parent_dir = project_path:match(parent_pattern)
-    if project_name and parent_dir then
+  for _, path in ipairs(paths) do
+    local name = path:match(name_pattern)
+    if name then
       table.insert(results, {
-        name = project_name,
-        path = project_path,
-        parent = parent_dir,
-        lower_name = project_name:lower(),
-        lower_parent = parent_dir:lower()
+        name = name,
+        path = path,
+        lower_name = name:lower()
       })
     end
   end
 
   table.sort(results, function(a, b)
-    if a.lower_parent == b.lower_parent then
-      return a.lower_name < b.lower_name
-    end
-    return a.lower_parent < b.lower_parent
+    return a.lower_name < b.lower_name
   end)
 
   return results
@@ -93,36 +81,53 @@ function M.merge_all_sessions()
     return
   end
 
+  -- Get current tmux sessions
   local sessions = vim.fn.systemlist('tmux list-sessions -F "#{session_name}"')
   if #sessions <= 1 then
     print("No sessions to merge")
     return
   end
 
-  -- Create new session name
+  -- Create new merged session
   local merged_name = "merged_" .. os.time()
 
-  -- Create the new session
-  vim.fn.system(string.format("tmux new-session -d -s %s", merged_name))
+  -- Build all commands into a single string for faster execution
+  local cmds = {
+    -- Create new session in detached state
+    string.format("tmux new-session -d -s %s", merged_name)
+  }
 
-  -- Join all sessions as vertical panes
+  -- Kill the first window that gets created automatically
+  table.insert(cmds, string.format("tmux kill-window -t %s:1", merged_name))
+
+  -- Move each existing session to a new pane in the merged session
   for i, session in ipairs(sessions) do
-    if i == 1 then
-      -- For first session, just move its contents to the new session
-      vim.fn.system(string.format("tmux join-pane -s %s:0.0 -t %s:0", session, merged_name))
-    else
-      -- For subsequent sessions, split vertically and join
-      vim.fn.system(string.format("tmux split-window -h -t %s", merged_name))
-      vim.fn.system(string.format("tmux join-pane -s %s:0.0 -t %s", session, merged_name))
+    -- Skip if it's the merged session itself
+    if session ~= merged_name then
+      if i == 1 then
+        -- For the first session, create a new window
+        table.insert(cmds, string.format("tmux new-window -t %s -n merged", merged_name))
+        table.insert(cmds, string.format("tmux move-window -s %s:1 -t %s:1", merged_name, merged_name))
+        table.insert(cmds, string.format("tmux join-pane -s %s:1 -t %s:1", session, merged_name))
+      else
+        -- For subsequent sessions, split vertically and join
+        table.insert(cmds, string.format("tmux split-window -h -t %s:1", merged_name))
+        table.insert(cmds, string.format("tmux join-pane -s %s:1 -t %s:1", session, merged_name))
+      end
     end
   end
 
   -- Switch to the merged session
-  vim.fn.system(string.format("tmux switch-client -t %s", merged_name))
+  table.insert(cmds, string.format("tmux switch-client -t %s", merged_name))
+
+  -- Execute all commands at once
+  local cmd = table.concat(cmds, " && ")
+  vim.fn.system(cmd)
+
   print(string.format("Merged %d sessions into: %s", #sessions, merged_name))
 end
 
-function M.open_workspace_popup(workspace, _)
+function M.open_workspace_popup(workspace)
   if not is_tmux_running() then
     print("Not in a tmux session")
     return
@@ -137,8 +142,8 @@ function M.open_workspace_popup(workspace, _)
       entry_maker = function(entry)
         return {
           value = entry,
-          display = string.format("%-30.30s    %-30.30s", entry.name, entry.parent),
-          ordinal = entry.parent .. " " .. entry.name,
+          display = entry.name,
+          ordinal = entry.name,
         }
       end
     },
