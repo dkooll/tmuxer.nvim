@@ -6,9 +6,6 @@ local conf = require('telescope.config').values
 local actions = require('telescope.actions')
 local action_state = require('telescope.actions.state')
 
--- Store selected sessions globally
-M.selected_sessions = {}
-
 M.config = {
   nvim_cmd = "nvim"
 }
@@ -17,68 +14,43 @@ local function is_tmux_running()
   return vim.fn.exists('$TMUX') == 1
 end
 
+local function merge_sessions(sessions)
+  if #sessions == 0 then return end
+
+  local merged_name = "merged_" .. os.time()
+  local cmds = {
+    string.format("tmux new-session -d -s %s", merged_name)
+  }
+
+  for i, session in ipairs(sessions) do
+    if i == 1 then
+      table.insert(cmds, string.format("tmux join-pane -s %s:0.0 -t %s:0", session, merged_name))
+    else
+      table.insert(cmds, string.format("tmux split-window -h -t %s", merged_name))
+      table.insert(cmds, string.format("tmux join-pane -s %s:0.0 -t %s", session, merged_name))
+    end
+  end
+
+  -- Join all commands and execute at once for speed
+  local cmd = table.concat(cmds, " && ")
+  vim.fn.system(cmd)
+
+  -- Switch to merged session
+  vim.fn.system(string.format("tmux switch-client -t %s", merged_name))
+end
+
+local function create_tmux_session(session_name, project_path)
+  vim.fn.system(string.format("tmux new-session -d -s %s -c %s", session_name, project_path))
+  vim.fn.system(string.format("tmux send-keys -t %s '%s' Enter", session_name, M.config.nvim_cmd))
+end
+
 local function switch_tmux_session(session_name)
   vim.fn.system(string.format("tmux switch-client -t %s", session_name))
 end
 
-local function create_tmux_session(session_name, project_path, callback)
-  vim.fn.jobstart({"tmux", "new-session", "-ds", session_name, "-c", project_path}, {
-    on_exit = function(_, _)
-      if callback then
-        callback()
-      end
-    end
-  })
-end
-
-local function run_nvim_in_session(session_name, project_path, callback)
-  create_tmux_session(session_name, project_path, function()
-    vim.fn.jobstart({"tmux", "send-keys", "-t", session_name, M.config.nvim_cmd, "Enter"}, {
-      on_exit = function(_, _)
-        if callback then
-          callback()
-        end
-      end
-    })
-  end)
-end
-
-function M.merge_selected_sessions()
-  if #M.selected_sessions == 0 then
-    print("No sessions selected. Use <leader>ts and Tab to select sessions first.")
-    return
-  end
-
-  -- Create new session name
-  local merged_name = "merged_" .. os.time()
-
-  -- Create a new session and immediately detach
-  vim.fn.system(string.format("tmux new-session -d -s %s", merged_name))
-
-  -- Join all selected sessions as vertical panes
-  for i, session in ipairs(M.selected_sessions) do
-    if i == 1 then
-      -- For first session, just move its contents to the new session
-      vim.fn.system(string.format("tmux join-pane -s %s:0.0 -t %s:0", session, merged_name))
-    else
-      -- For subsequent sessions, split vertically and join
-      vim.fn.system(string.format("tmux split-window -h -t %s", merged_name))
-      vim.fn.system(string.format("tmux join-pane -s %s:0.0 -t %s", session, merged_name))
-    end
-  end
-
-  -- Switch to the new merged session
-  switch_tmux_session(merged_name)
-  print(string.format("Merged %d sessions into: %s", #M.selected_sessions, merged_name))
-
-  -- Clear selections after merging
-  M.selected_sessions = {}
-end
-
 local function find_git_projects(workspace_path, max_depth)
-  local has_fd = vim.fn.executable('fd') == 1
   local cmd
-  if has_fd then
+  if vim.fn.executable('fd') == 1 then
     cmd = string.format(
       "fd -H -t d '^.git$' %s -d %d --exclude 'archive' -x echo {//}",
       workspace_path,
@@ -92,103 +64,70 @@ local function find_git_projects(workspace_path, max_depth)
     )
   end
 
-  local found_paths = vim.fn.systemlist(cmd)
+  local paths = vim.fn.systemlist(cmd)
   local results = {}
   local path_sep = package.config:sub(1,1)
-  local parent_pattern = "([^" .. path_sep .. "]+)" .. path_sep .. "[^" .. path_sep .. "]+$"
   local name_pattern = "[^" .. path_sep .. "]+$"
 
-  for _, project_path in ipairs(found_paths) do
-    local project_name = project_path:match(name_pattern)
-    local parent_dir = project_path:match(parent_pattern)
-    if project_name and parent_dir then
+  for _, path in ipairs(paths) do
+    local name = path:match(name_pattern)
+    if name then
       table.insert(results, {
-        name = project_name,
-        path = project_path,
-        parent = parent_dir,
-        lower_name = project_name:lower(),
-        lower_parent = parent_dir:lower()
+        name = name,
+        path = path,
+        lower_name = name:lower()
       })
     end
   end
 
   table.sort(results, function(a, b)
-    if a.lower_parent == b.lower_parent then
-      return a.lower_name < b.lower_name
-    end
-    return a.lower_parent < b.lower_parent
+    return a.lower_name < b.lower_name
   end)
 
   return results
 end
 
-function M.open_workspace_popup(workspace, _)
-  if not is_tmux_running() then
-    print("Not in a tmux session")
-    return
-  end
+function M.open_workspace_popup(workspace)
+  if not is_tmux_running() then return end
 
   local projects = find_git_projects(workspace.path, 3)
 
   pickers.new({}, {
-    prompt_title = "Select a project in " .. workspace.name,
+    prompt_title = "Select Project",
     finder = finders.new_table {
       results = projects,
       entry_maker = function(entry)
         return {
           value = entry,
-          display = string.format("%-30.30s    %-30.30s", entry.name, entry.parent),
-          ordinal = entry.parent .. " " .. entry.name,
+          display = entry.name,
+          ordinal = entry.name,
         }
       end
     },
     sorter = conf.generic_sorter({}),
     attach_mappings = function(prompt_bufnr)
       actions.select_default:replace(function()
-        local picker = action_state.get_current_picker(prompt_bufnr)
-        local selections = picker:get_multi_selection()
-
         actions.close(prompt_bufnr)
+        local selection = action_state.get_selected_entry()
+        local project = selection.value
+        local session_name = project.name:gsub("[^%w_]", "_"):lower()
 
-        if #selections > 0 then
-          local completed = 0
-          local total = #selections
-
-          for _, selection in ipairs(selections) do
-            local project = selection.value
-            local session_name = string.lower(project.name):gsub("[^%w_]", "_")
-            create_tmux_session(session_name, project.path, function()
-              completed = completed + 1
-              print(string.format("Created tmux session (%d/%d): %s", completed, total, session_name))
-            end)
-          end
-        else
-          local selection = action_state.get_selected_entry()
-          local project = selection.value
-          local session_name = string.lower(project.name):gsub("[^%w_]", "_")
-          run_nvim_in_session(session_name, project.path, function()
-            switch_tmux_session(session_name)
-            print("Created and switched to session: " .. session_name .. " with " .. M.config.nvim_cmd)
-          end)
-        end
+        create_tmux_session(session_name, project.path)
+        switch_tmux_session(session_name)
       end)
-
       return true
     end,
   }):find()
 end
 
 function M.tmux_sessions()
-  if not is_tmux_running() then
-    print("Not in a tmux session")
-    return
-  end
+  if not is_tmux_running() then return end
 
   local sessions = vim.fn.systemlist('tmux list-sessions -F "#{session_name}"')
   table.sort(sessions)
 
   pickers.new({}, {
-    prompt_title = "Select Sessions (Tab for multi-select)",
+    prompt_title = "Sessions (Tab:select, M:merge)",
     finder = finders.new_table {
       results = sessions,
       entry_maker = function(entry)
@@ -201,31 +140,37 @@ function M.tmux_sessions()
     },
     sorter = conf.generic_sorter({}),
     attach_mappings = function(prompt_bufnr)
+      -- Enter key behavior
       actions.select_default:replace(function()
-        local picker = action_state.get_current_picker(prompt_bufnr)
-        local selections = picker:get_multi_selection()
-
-        if #selections > 0 then
-          -- Store selections globally
-          M.selected_sessions = vim.tbl_map(function(selection)
-            return selection.value
-          end, selections)
-          print(string.format("Selected %d sessions. Use <leader>tm to merge.", #M.selected_sessions))
-        else
-          -- Single selection behavior - switch to session
-          local selection = action_state.get_selected_entry()
+        local selection = action_state.get_selected_entry()
+        if selection then
           switch_tmux_session(selection.value)
         end
-
         actions.close(prompt_bufnr)
       end)
+
+      -- Add 'M' key to merge sessions
+      vim.api.nvim_buf_set_keymap(
+        prompt_bufnr,
+        "i",
+        "M",
+        "<cmd>lua require('telescope.actions.state').get_current_picker(prompt_bufnr):get_multi_selection() " ..
+        "| lua local selections = require('telescope.actions.state').get_current_picker(prompt_bufnr):get_multi_selection(); " ..
+        "local sessions = vim.tbl_map(function(selection) return selection.value end, selections); " ..
+        "require('tmuxer').merge_sessions(sessions); " ..
+        "require('telescope.actions').close(prompt_bufnr)<cr>",
+        { noremap = true, silent = true }
+      )
+
       return true
     end,
   }):find()
 end
 
+M.merge_sessions = merge_sessions  -- Expose for the keymap
+
 function M.setup(opts)
-  M.config = vim.tbl.deep_extend("force", M.config, opts or {})
+  M.config = vim.tbl_deep_extend("force", M.config, opts or {})
   M.workspaces = opts.workspaces or {}
 
   vim.api.nvim_create_user_command("WorkspaceOpen", function()
@@ -258,7 +203,6 @@ function M.setup(opts)
   end, {})
 
   vim.api.nvim_create_user_command("TmuxSessions", M.tmux_sessions, {})
-  vim.api.nvim_create_user_command("TmuxMergeSessions", M.merge_selected_sessions, {})
 end
 
 return M
