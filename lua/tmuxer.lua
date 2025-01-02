@@ -158,7 +158,7 @@ function M.open_workspace_popup(workspace, _)
           local session_name = string.lower(project.name):gsub("[^%w_]", "_")
           run_nvim_in_session(session_name, project.path, function()
             switch_tmux_session(session_name)
-            print("Created and switched to session: " .. session_name .. " with " .. M.config.nvim_cmd)
+            print("Created and switched to session: " .. session_name .. " with " .. M.config.nvim_alias)
           end)
         end
       end)
