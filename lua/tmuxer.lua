@@ -129,7 +129,7 @@ function M.open_workspace_popup(workspace, _)
         local parent_format = "%-" .. column_width .. "." .. column_width .. "s"
         return {
           value = entry,
-          display = string.format(name_format .. "                    " .. parent_format, entry.name, entry.parent),
+          display = string.format(name_format .. "     " .. parent_format, entry.name, entry.parent),
           ordinal = entry.parent .. " " .. entry.name,
         }
       end
