@@ -207,6 +207,7 @@ function M.tmux_sessions()
         local selections = picker:get_multi_selection()
         local sessions_to_kill = {}
 
+        -- Collect sessions to delete
         if #selections > 0 then
           for _, sel in ipairs(selections) do
             table.insert(sessions_to_kill, sel.value)
@@ -217,30 +218,42 @@ function M.tmux_sessions()
           table.insert(sessions_to_kill, selection.value)
         end
 
+        -- Kill sessions
         for _, session in ipairs(sessions_to_kill) do
           os.execute("tmux kill-session -t " .. vim.fn.shellescape(session))
         end
 
-        local new_sessions = vim.fn.systemlist('tmux list-sessions -F "#{session_name}"')
-        table.sort(new_sessions)
+        -- Only refresh if buffer is still valid
+        if vim.api.nvim_buf_is_valid(prompt_bufnr) then
+          local new_sessions = vim.fn.systemlist('tmux list-sessions -F "#{session_name}"')
+          table.sort(new_sessions)
 
-        if #new_sessions == 0 then
-          actions.close(prompt_bufnr)
-          return
-        end
-
-        local new_finder = finders.new_table({
-          results = new_sessions,
-          entry_maker = function(entry)
-            return {
-              value = entry,
-              display = entry,
-              ordinal = entry,
-            }
+          if #new_sessions == 0 then
+            actions.close(prompt_bufnr)
+            return
           end
-        })
 
-        picker:refresh(new_finder, { reset_prompt = true })
+          local new_finder = finders.new_table({
+            results = new_sessions,
+            entry_maker = function(entry)
+              return {
+                value = entry,
+                display = entry,
+                ordinal = entry,
+              }
+            end
+          })
+
+          -- Schedule refresh to avoid race conditions
+          vim.schedule(function()
+            if vim.api.nvim_buf_is_valid(prompt_bufnr) then
+              picker:refresh(new_finder, {
+                reset_prompt = true,
+                new_prefix = picker.prompt_prefix
+              })
+            end
+          end)
+        end
       end)
 
       return true
