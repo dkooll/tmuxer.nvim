@@ -143,7 +143,6 @@ function M.open_workspace_popup(workspace, _)
         actions.close(prompt_bufnr)
 
         if #selections > 0 then
-          -- Multiple selections: create sessions and start nvim in background asynchronously
           local completed = 0
           local total = #selections
 
@@ -151,14 +150,12 @@ function M.open_workspace_popup(workspace, _)
             local project = selection.value
             local session_name = string.lower(project.name):gsub("[^%w_]", "_")
 
-            -- Use run_nvim_in_session for both single and multiple selections
             run_nvim_in_session(session_name, project.path, function()
               completed = completed + 1
               print(string.format("Created tmux session with nvim (%d/%d): %s", completed, total, session_name))
             end)
           end
         else
-          -- Single selection: create session, send nvim command, and switch to it
           local selection = action_state.get_selected_entry()
           local project = selection.value
           local session_name = string.lower(project.name):gsub("[^%w_]", "_")
@@ -199,21 +196,17 @@ function M.tmux_sessions()
     },
     sorter = conf.generic_sorter({}),
     attach_mappings = function(prompt_bufnr, map)
-      -- Default Enter action to switch session
       actions.select_default:replace(function()
         actions.close(prompt_bufnr)
         local selection = action_state.get_selected_entry()
         switch_tmux_session(selection.value)
       end)
 
-      -- Enhanced Ctrl+D to handle both single and multi deletions
       map("i", "<C-d>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
         local selections = picker:get_multi_selection()
-        local current_row = picker:get_selection_row()
         local sessions_to_kill = {}
 
-        -- Collect sessions to delete
         if #selections > 0 then
           for _, sel in ipairs(selections) do
             table.insert(sessions_to_kill, sel.value)
@@ -224,12 +217,10 @@ function M.tmux_sessions()
           table.insert(sessions_to_kill, selection.value)
         end
 
-        -- Kill sessions
         for _, session in ipairs(sessions_to_kill) do
           os.execute("tmux kill-session -t " .. vim.fn.shellescape(session))
         end
 
-        -- Refresh session list
         local new_sessions = vim.fn.systemlist('tmux list-sessions -F "#{session_name}"')
         table.sort(new_sessions)
 
@@ -238,7 +229,6 @@ function M.tmux_sessions()
           return
         end
 
-        -- Update picker
         local new_finder = finders.new_table({
           results = new_sessions,
           entry_maker = function(entry)
@@ -251,27 +241,6 @@ function M.tmux_sessions()
         })
 
         picker:refresh(new_finder, { reset_prompt = true })
-
-        -- Update cursor position after refresh
-        vim.schedule(function()
-          local is_multiple = #sessions_to_kill > 1
-          local new_count = #new_sessions
-          local new_row = 0
-
-          if not is_multiple then
-            -- For single deletion, try to maintain position
-            new_row = math.min(current_row, new_count - 1)
-            -- If we deleted the last item, move up one
-            if current_row >= new_count then
-              new_row = math.max(0, new_count - 1)
-            end
-          else
-            -- For multiple deletions, reset to top
-            new_row = 0
-          end
-
-          picker:set_selection(new_row)
-        end)
       end)
 
       return true
@@ -283,21 +252,17 @@ function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
   M.workspaces = opts.workspaces or {}
 
-  -- Initial column width calculation
   update_column_width()
 
-  -- Set up autocommand for window resize
   vim.api.nvim_create_autocmd("VimResized", {
     group = vim.api.nvim_create_augroup("TmuxerResize", { clear = true }),
     callback = update_column_width,
   })
 
-  -- Create commands
   vim.api.nvim_create_user_command("WorkspaceOpen", function()
     if #M.workspaces == 1 then
       M.open_workspace_popup(M.workspaces[1])
     else
-      -- Show workspace picker if multiple workspaces
       pickers.new({
         layout_config = M.config.layout_config
       }, {
