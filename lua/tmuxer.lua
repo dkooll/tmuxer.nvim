@@ -171,13 +171,29 @@ function M.open_workspace_popup(workspace, _)
   }):find()
 end
 
+local function get_non_current_tmux_sessions()
+  local sessions_output = vim.fn.systemlist(
+    'tmux list-sessions -F "#{?session_attached} #{session_name}"'
+  )
+  local sessions = {}
+
+  for _, line in ipairs(sessions_output) do
+    local is_current, name = line:match("^(%d)%s+(.+)$")
+    if name and is_current == "0" then
+      table.insert(sessions, name)
+    end
+  end
+
+  return sessions
+end
+
 function M.tmux_sessions()
   if not is_tmux_running() then
     print("Not in a tmux session")
     return
   end
 
-  local sessions = vim.fn.systemlist('tmux list-sessions -F "#{session_name}"')
+  local sessions = get_non_current_tmux_sessions()
   table.sort(sessions)
 
   pickers.new({
@@ -225,7 +241,7 @@ function M.tmux_sessions()
 
         -- Only refresh if buffer is still valid
         if vim.api.nvim_buf_is_valid(prompt_bufnr) then
-          local new_sessions = vim.fn.systemlist('tmux list-sessions -F "#{session_name}"')
+          local new_sessions = get_non_current_tmux_sessions()
           table.sort(new_sessions)
 
           if #new_sessions == 0 then
