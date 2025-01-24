@@ -173,7 +173,7 @@ end
 
 local function get_non_current_tmux_sessions()
   local sessions_output = vim.fn.systemlist(
-    'tmux list-sessions -F "#{?session_attached} #{session_name}"'
+    'tmux list-sessions -F "#{?session_attached,1,0} #{session_name}"'
   )
   local sessions = {}
 
