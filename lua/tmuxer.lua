@@ -62,7 +62,7 @@ local function find_git_projects(workspace_path, max_depth)
   local cmd
   if has_fd then
     cmd = string.format(
-      "fd -H -t d '^.git$' %s -d 3 --exclude 'archive' -x echo {//}",
+      "fd -H -t d '^.git$' %s -d 4 --exclude 'archive' -x echo {//}",
       -- "fd -H -t d '^.git$' %s -d %d --exclude 'archive' -x echo {//}",
       workspace_path,
       max_depth
