@@ -64,34 +64,16 @@ local function find_git_projects(workspace_path, max_depth)
     cmd = string.format(
       "fd -H -t d '^.git$' %s -d %d --exclude 'archive' -x echo {//}",
       workspace_path,
-      max_depth + 1 -- Add +1 for fd depth adjustment
+      max_depth + 1
     )
   else
     cmd = string.format(
-    -- Fixed find command with correct -maxdepth position
+    -- Else use find
       "find %s -maxdepth %d -type d -name .git -prune ! -path '*/archive/*' -exec dirname {} \\;",
       workspace_path,
-      max_depth + 1 -- Add +1 for find depth alignment
+      max_depth + 1
     )
   end
-
-  -- local function find_git_projects(workspace_path, max_depth)
-  --   -- Use fd if available for faster searching
-  --   local has_fd = vim.fn.executable('fd') == 1
-  --   local cmd
-  --   if has_fd then
-  --     cmd = string.format(
-  --       "fd -H -t d '^.git$' %s -d %d --exclude 'archive' -x echo {//}",
-  --       workspace_path,
-  --       max_depth
-  --     )
-  --   else
-  --     cmd = string.format(
-  --       "find %s -type d -name .git -prune -maxdepth %d ! -path '*/archive/*' -exec dirname {} \\;",
-  --       workspace_path,
-  --       max_depth
-  --     )
-  --   end
 
   local found_paths = vim.fn.systemlist(cmd)
   local results = {}
@@ -132,7 +114,6 @@ function M.open_workspace_popup(workspace, _)
     return
   end
 
-  -- local projects = find_git_projects(workspace.path, 3)
   local projects = find_git_projects(workspace.path, M.config.max_depth)
 
   pickers.new({
