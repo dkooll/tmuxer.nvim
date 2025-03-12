@@ -4,9 +4,23 @@ This is a neovim plugin that streamlines workspace management and tmux session h
 
 It allows you to quickly navigate between different project directories and automatically creates or switches to corresponding tmux sessions.
 
-With tmuxer.nvim, you can effortlessly organize your development environment, making it easier to juggle multiple projects.
+## Features
 
-The plugin uses telescope for an intuitive, searchable interface to select workspaces and tmux sessions.
+Quickly browse and open Git projects from configured workspaces
+
+Automatically create tmux sessions for selected projects
+
+Start Neovim instances within tmux sessions
+
+List and switch between existing tmux sessions
+
+Multi-select support for batch operations
+
+Kill tmux sessions without leaving Neovim
+
+Customizable layout configuration
+
+Smart project sorting by parent directories
 
 ## Usage
 
@@ -43,10 +57,38 @@ return {
 }
 ```
 
+## Commands
+
+`:WorkspaceOpen`
+
+Opens a Telescope picker to select a workspace, then shows Git projects within that workspace
+
+`:TmuxSessions`
+
+Lists all non-attached tmux sessions and allows switching between them or killing sessions with <C-d>
+
 ## Notes
 
-The Telescope picker scans one or more base directories, which can be configured in the settings, identifying subfolders and displaying only projects that contain a .git folder.
+The plugin uses Telescope for an intuitive, searchable interface
 
-By default, all contents within the archive folder are excluded from the results.
+Projects are discovered by finding .git directories (uses fd if available for better performance)
 
-Multiple session handling is supported in parallel, enabling the creation and removal of sessions while filtering out the current one.
+Automatically excludes folders named archive from search results
+
+Session names are generated from project names (non-alphanumeric characters replaced with underscores)
+
+Sessions can be killed directly from the session picker using <C-d>
+
+Multiple projects can be selected at once for batch operations
+
+## Requirements
+
+Neovim
+
+Tmux running (plugin checks for $TMUX environment variable)
+
+Telescope.nvim
+
+Git repositories with .git directories
+
+Fd command (optional, falls back to find if not available)
