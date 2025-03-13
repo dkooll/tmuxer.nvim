@@ -75,7 +75,7 @@ Automatically excludes folders named archive from search results
 
 Session names are generated from project names (non-alphanumeric characters replaced with underscores)
 
-Sessions can be killed directly from the session picker using <C-d>
+Sessions can be killed directly from the session picker
 
 Multiple projects can be selected at once for batch operations
 
