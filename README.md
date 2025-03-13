@@ -18,8 +18,6 @@ Multi-select support for batch operations
 
 Kill tmux sessions without leaving Neovim
 
-Customizable layout configuration
-
 Smart project sorting by parent directories
 
 ## Usage
@@ -83,12 +81,10 @@ Multiple projects can be selected at once for batch operations
 
 ## Requirements
 
-Neovim
+Neovim 0.7.0 or higher
 
 Tmux running (plugin checks for $TMUX environment variable)
 
 Telescope.nvim
-
-Git repositories with .git directories
 
 Fd command (optional, falls back to find if not available)
