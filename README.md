@@ -81,10 +81,10 @@ Multiple projects can be selected at once for batch operations
 
 ## Requirements
 
-Neovim 0.7.0 or higher
+[Neovim](https://neovim.io/) 0.7.0 or higher
 
-Tmux running (plugin checks for $TMUX environment variable)
+[Tmux](https://github.com/tmux) running (plugin checks for $TMUX environment variable)
 
-Telescope.nvim
+[Telescope.nvim](https://github.com/nvim-telescope/telescope.nvim)
 
-Fd command (optional, falls back to find if not available)
+[Fd](https://github.com/sharkdp/fd) command (optional, falls back to find if not available)
