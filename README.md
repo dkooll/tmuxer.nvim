@@ -79,6 +79,14 @@ Sessions can be killed directly from the session picker
 
 Multiple projects can be selected at once for batch operations
 
+## Contributors
+
+We welcome contributions from the community! Whether it's reporting a bug, suggesting a new feature, or submitting a pull request, your input is highly valued. <br><br>
+
+<a href="https://github.com/dkooll/tmuxer.nvim/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=dkooll/tmuxer.nvim" />
+</a>
+
 ## Requirements
 
 [Neovim](https://neovim.io/) 0.7.0 or higher
