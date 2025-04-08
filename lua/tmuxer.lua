@@ -1,3 +1,4 @@
+
 local M = {}
 
 -- Column width cache for performance
@@ -252,12 +253,12 @@ function M.setup(opts)
 
   -- Force the picker to use ivy_split layout
   local snacks_select = require("snacks").picker.select
-  require("snacks").picker.select = function(items, on_choice)
-    opts = opts or {}
-    if not opts.kind then
-      opts.kind = "tmuxer"
+  require("snacks").picker.select = function(items, picker_opts, on_choice)  -- Changed parameter name here
+    picker_opts = picker_opts or {}  -- And here
+    if not picker_opts.kind then  -- And here
+      picker_opts.kind = "tmuxer"  -- And here
     end
-    return snacks_select(items, opts, on_choice)
+    return snacks_select(items, picker_opts, on_choice)  -- And here
   end
 
   vim.api.nvim_create_autocmd("VimResized", {
@@ -291,7 +292,6 @@ function M.setup(opts)
 end
 
 return M
-
 -- local M = {}
 --
 -- local pickers = require('telescope.pickers')
