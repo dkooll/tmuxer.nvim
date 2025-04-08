@@ -1,3 +1,4 @@
+
 local M = {}
 
 -- Column width cache for performance
@@ -283,7 +284,6 @@ function M.setup(opts)
 end
 
 return M
-
 -- local M = {}
 --
 -- local pickers = require('telescope.pickers')
