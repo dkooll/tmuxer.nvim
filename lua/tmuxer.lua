@@ -117,11 +117,7 @@ function M.open_workspace_popup(workspace, _)
   -- Transform projects for Snacks
   local items = {}
   for _, project in ipairs(projects) do
-    table.insert(items, {
-      label = project.name,
-      description = project.parent,
-      value = project
-    })
+    table.insert(items, project)
   end
 
   local function handle_choice(choice)
@@ -133,8 +129,7 @@ function M.open_workspace_popup(workspace, _)
       local completed = 0
       local total = #multiple_choices
 
-      for _, item in ipairs(multiple_choices) do
-        local project = item
+      for _, project in ipairs(multiple_choices) do
         local session_name = string.lower(project.name):gsub("[^%w_]", "_")
 
         run_nvim_in_session(session_name, project.path, function()
@@ -160,25 +155,10 @@ function M.open_workspace_popup(workspace, _)
       prompt = "Select a project in " .. workspace.name,
       format_item = function(item)
         if type(item) ~= "table" then return tostring(item) end
-
-        -- Check if item is direct or wrapped
-        if item.value and item.label then
-          -- Item is wrapped with label/value structure
-          if type(item.value) == "table" then
-            local project = item.value
-            return (project.name or item.label or "Unknown") ..
-                   (project.parent and (" (" .. project.parent .. ")") or
-                   (item.description and (" (" .. item.description .. ")") or ""))
-          else
-            -- Just use label/description directly
-            return item.label .. (item.description and (" (" .. item.description .. ")") or "")
-          end
-        else
-          -- Direct project reference
-          return (item.name or "Unknown") .. (item.parent and (" (" .. item.parent .. ")") or "")
-        end
+        return (item.name or "Unknown") .. (item.parent and (" (" .. item.parent .. ")") or "")
       end,
-      kind = "tmuxer"
+      kind = "tmuxer",
+      layout = "ivy_split"
     },
     handle_choice
   )
@@ -217,6 +197,7 @@ function M.tmux_sessions()
   local opts = {
     prompt = "Switch Tmux Session",
     kind = "tmuxer",
+    layout = "ivy_split",
     on_keypress = {
       ["<C-d>"] = function(selected)
         if not selected then return end
@@ -243,40 +224,13 @@ function M.setup(opts)
 
   update_column_width()
 
-  -- Register our custom picker with ivy_split layout
-  pcall(function()
-    if require("snacks") and require("snacks").config then
-      local picker_config = require("snacks").config.picker or {}
-      if not picker_config.sources then
-        require("snacks").config.picker = require("snacks").config.picker or {}
-        require("snacks").config.picker.sources = {}
-      end
-
-      -- Set tmuxer to use ivy_split layout
-      require("snacks").config.picker.sources["tmuxer"] = {
-        layout = "ivy_split",
-        hidden = {}  -- Show all windows
-      }
-    end
-  end)
-
-  -- Force the picker to use ivy_split layout
+  -- Force all snacks pickers with kind "tmuxer" to use ivy_split
   local snacks_select = require("snacks").picker.select
   require("snacks").picker.select = function(items, picker_opts, on_choice)
     picker_opts = picker_opts or {}
-    if not picker_opts.kind then
-      picker_opts.kind = "tmuxer"
+    if picker_opts.kind == "tmuxer" then
+      picker_opts.layout = "ivy_split"
     end
-
-    -- Force ivy_split layout for tmuxer kind
-    if picker_opts.kind == "tmuxer" and not picker_opts.layout then
-      picker_opts.layout = {
-        preset = "ivy_split",
-        hidden = {},
-        layout = M.config.layout_config.layout
-      }
-    end
-
     return snacks_select(items, picker_opts, on_choice)
   end
 
@@ -300,7 +254,8 @@ function M.setup(opts)
         {
           prompt = "Select Workspace",
           format_item = function(w) return type(w) == "table" and w.name or tostring(w) end,
-          kind = "tmuxer"
+          kind = "tmuxer",
+          layout = "ivy_split"
         },
         handle_workspace_choice
       )
