@@ -158,8 +158,11 @@ function M.open_workspace_popup(workspace, _)
     items,
     {
       prompt = "Select a project in " .. workspace.name,
-      format_item = function(item) return item.name .. (item.parent and (" (" .. item.parent .. ")") or "") end,
-      kind = "tmuxer.projects"
+      format_item = function(item)
+        if type(item) ~= "table" then return tostring(item) end
+        return (item.name or "Unknown") .. (item.parent and (" (" .. item.parent .. ")") or "")
+      end,
+      kind = "tmuxer"
     },
     handle_choice
   )
@@ -197,7 +200,7 @@ function M.tmux_sessions()
 
   local opts = {
     prompt = "Switch Tmux Session",
-    kind = "tmuxer.sessions",
+    kind = "tmuxer",
     on_keypress = {
       ["<C-d>"] = function(selected)
         if not selected then return end
@@ -224,12 +227,37 @@ function M.setup(opts)
 
   update_column_width()
 
-  -- Register UI settings for our pickers (enable ivy_split)
-  local snacks_config = require("snacks").config
-  if snacks_config and snacks_config.picker and snacks_config.picker.sources then
-    snacks_config.picker.sources["tmuxer.projects"] = { layout = "ivy_split" }
-    snacks_config.picker.sources["tmuxer.sessions"] = { layout = "ivy_split" }
-    snacks_config.picker.sources["tmuxer.workspaces"] = { layout = "ivy_split" }
+  -- Register our custom picker with ivy_split layout
+  -- Use pcall in case Snacks API changes
+  pcall(function()
+    if require("snacks").picker and require("snacks").picker.config then
+      local layout = {
+        layout = "ivy_split"
+      }
+
+      -- For older Snacks versions
+      if require("snacks").picker.config.sources then
+        require("snacks").picker.config.sources["tmuxer"] = layout
+      end
+
+      -- For newer Snacks API
+      if require("snacks").config and require("snacks").config.picker then
+        if not require("snacks").config.picker.sources then
+          require("snacks").config.picker.sources = {}
+        end
+        require("snacks").config.picker.sources["tmuxer"] = layout
+      end
+    end
+  end)
+
+  -- Force the picker to use ivy_split layout
+  local snacks_select = require("snacks").picker.select
+  require("snacks").picker.select = function(items, on_choice)
+    opts = opts or {}
+    if not opts.kind then
+      opts.kind = "tmuxer"
+    end
+    return snacks_select(items, opts, on_choice)
   end
 
   vim.api.nvim_create_autocmd("VimResized", {
@@ -249,7 +277,11 @@ function M.setup(opts)
 
       require("snacks").picker.select(
         M.workspaces,
-        { prompt = "Select Workspace", format_item = function(w) return w.name end, kind = "tmuxer.workspaces" },
+        {
+          prompt = "Select Workspace",
+          format_item = function(w) return type(w) == "table" and w.name or tostring(w) end,
+          kind = "tmuxer"
+        },
         handle_workspace_choice
       )
     end
