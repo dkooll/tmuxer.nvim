@@ -106,6 +106,21 @@ local function find_git_projects(workspace_path, max_depth)
   return results
 end
 
+-- Function to create a "picker" with fixed ivy_split layout
+local function fixed_ivy_picker(items, opts, callback)
+  -- Force ivy_split layout without relying on snacks sources
+  local ivy_opts = vim.tbl_deep_extend("force", opts or {}, {
+    win = {
+      height = 10, -- Force to use split window
+      width = 0.8,
+    },
+    preview = false -- Disable preview
+  })
+
+  -- Use the native select function to bypass any overrides
+  require("snacks.picker").select(items, ivy_opts, callback)
+end
+
 function M.open_workspace_popup(workspace, _)
   if not is_tmux_running() then
     print("Not in a tmux session")
@@ -113,12 +128,6 @@ function M.open_workspace_popup(workspace, _)
   end
 
   local projects = find_git_projects(workspace.path, M.config.max_depth)
-
-  -- Transform projects for Snacks
-  local items = {}
-  for _, project in ipairs(projects) do
-    table.insert(items, project)
-  end
 
   local function handle_choice(choice)
     if not choice then return end
@@ -149,16 +158,15 @@ function M.open_workspace_popup(workspace, _)
     end
   end
 
-  require("snacks").picker.select(
-    items,
+  -- Use direct picker that bypasses layout settings
+  fixed_ivy_picker(
+    projects,
     {
       prompt = "Select a project in " .. workspace.name,
       format_item = function(item)
         if type(item) ~= "table" then return tostring(item) end
         return (item.name or "Unknown") .. (item.parent and (" (" .. item.parent .. ")") or "")
-      end,
-      kind = "tmuxer",
-      layout = "ivy_split"
+      end
     },
     handle_choice
   )
@@ -194,28 +202,29 @@ function M.tmux_sessions()
     switch_tmux_session(choice)
   end
 
-  local opts = {
-    prompt = "Switch Tmux Session",
-    kind = "tmuxer",
-    layout = "ivy_split",
-    on_keypress = {
-      ["<C-d>"] = function(selected)
-        if not selected then return end
+  -- Use direct picker with special keys
+  fixed_ivy_picker(
+    sessions,
+    {
+      prompt = "Switch Tmux Session",
+      on_keypress = {
+        ["<C-d>"] = function(selected)
+          if not selected then return end
 
-        -- Handle single selection
-        os.execute("tmux kill-session -t " .. vim.fn.shellescape(selected))
+          -- Handle single selection
+          os.execute("tmux kill-session -t " .. vim.fn.shellescape(selected))
 
-        -- Refresh the list by reopening
-        vim.schedule(function()
-          M.tmux_sessions()
-        end)
+          -- Refresh the list by reopening
+          vim.schedule(function()
+            M.tmux_sessions()
+          end)
 
-        return true -- Close current picker
-      end
-    }
-  }
-
-  require("snacks").picker.select(sessions, opts, handle_choice)
+          return true -- Close current picker
+        end
+      }
+    },
+    handle_choice
+  )
 end
 
 function M.setup(opts)
@@ -223,16 +232,6 @@ function M.setup(opts)
   M.workspaces = opts.workspaces or {}
 
   update_column_width()
-
-  -- Force all snacks pickers with kind "tmuxer" to use ivy_split
-  local snacks_select = require("snacks").picker.select
-  require("snacks").picker.select = function(items, picker_opts, on_choice)
-    picker_opts = picker_opts or {}
-    if picker_opts.kind == "tmuxer" then
-      picker_opts.layout = "ivy_split"
-    end
-    return snacks_select(items, picker_opts, on_choice)
-  end
 
   vim.api.nvim_create_autocmd("VimResized", {
     group = vim.api.nvim_create_augroup("TmuxerResize", { clear = true }),
@@ -249,13 +248,12 @@ function M.setup(opts)
         end
       end
 
-      require("snacks").picker.select(
+      -- Use direct picker
+      fixed_ivy_picker(
         M.workspaces,
         {
           prompt = "Select Workspace",
-          format_item = function(w) return type(w) == "table" and w.name or tostring(w) end,
-          kind = "tmuxer",
-          layout = "ivy_split"
+          format_item = function(w) return type(w) == "table" and w.name or tostring(w) end
         },
         handle_workspace_choice
       )
