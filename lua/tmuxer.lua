@@ -158,7 +158,8 @@ function M.open_workspace_popup(workspace, _)
     items,
     {
       prompt = "Select a project in " .. workspace.name,
-      format_item = function(item) return item.name .. " (" .. item.parent .. ")" end
+      format_item = function(item) return item.name .. (item.parent and (" (" .. item.parent .. ")") or "") end,
+      kind = "tmuxer.projects"
     },
     handle_choice
   )
@@ -196,6 +197,7 @@ function M.tmux_sessions()
 
   local opts = {
     prompt = "Switch Tmux Session",
+    kind = "tmuxer.sessions",
     on_keypress = {
       ["<C-d>"] = function(selected)
         if not selected then return end
@@ -222,6 +224,14 @@ function M.setup(opts)
 
   update_column_width()
 
+  -- Register UI settings for our pickers (enable ivy_split)
+  local snacks_config = require("snacks").config
+  if snacks_config and snacks_config.picker and snacks_config.picker.sources then
+    snacks_config.picker.sources["tmuxer.projects"] = { layout = "ivy_split" }
+    snacks_config.picker.sources["tmuxer.sessions"] = { layout = "ivy_split" }
+    snacks_config.picker.sources["tmuxer.workspaces"] = { layout = "ivy_split" }
+  end
+
   vim.api.nvim_create_autocmd("VimResized", {
     group = vim.api.nvim_create_augroup("TmuxerResize", { clear = true }),
     callback = update_column_width,
@@ -239,7 +249,7 @@ function M.setup(opts)
 
       require("snacks").picker.select(
         M.workspaces,
-        { prompt = "Select Workspace", format_item = function(w) return w.name end },
+        { prompt = "Select Workspace", format_item = function(w) return w.name end, kind = "tmuxer.workspaces" },
         handle_workspace_choice
       )
     end
