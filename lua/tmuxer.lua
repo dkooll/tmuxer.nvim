@@ -1,4 +1,3 @@
-
 local M = {}
 
 -- Column width cache for performance
@@ -130,7 +129,7 @@ function M.open_workspace_popup(workspace, _)
     items = items,
     title = "Select a project in " .. workspace.name,
     layout = M.config.layout_config,
-    on_select = function(choice)
+    on_choice = function(choice)
       if not choice then return end
 
       if type(choice) == "table" and #choice > 0 then
@@ -271,7 +270,7 @@ function M.setup(opts)
         items = workspace_items,
         title = "Select Workspace",
         layout = M.config.layout_config,
-        on_select = function(choice)
+        on_choice = function(choice)
           if choice then
             M.open_workspace_popup(choice.value)
           end
@@ -284,6 +283,7 @@ function M.setup(opts)
 end
 
 return M
+
 -- local M = {}
 --
 -- local pickers = require('telescope.pickers')
