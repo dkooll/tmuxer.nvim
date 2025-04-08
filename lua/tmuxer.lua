@@ -128,9 +128,9 @@ function M.open_workspace_popup(workspace, _)
 
   require("snacks").picker.select({
     items = items,
-    prompt = "Select a project in " .. workspace.name,
+    title = "Select a project in " .. workspace.name,
     layout = M.config.layout_config,
-    on_choice = function(choice)
+    on_select = function(choice)
       if not choice then return end
 
       if type(choice) == "table" and #choice > 0 then
@@ -269,9 +269,9 @@ function M.setup(opts)
 
       require("snacks").picker.select({
         items = workspace_items,
-        prompt = "Select Workspace",
+        title = "Select Workspace",
         layout = M.config.layout_config,
-        on_choice = function(choice)
+        on_select = function(choice)
           if choice then
             M.open_workspace_popup(choice.value)
           end
