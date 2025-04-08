@@ -7,13 +7,10 @@ M.config = {
   nvim_alias = "nvim", -- default
   max_depth = 2,
   layout_config = {
-    preset = "ivy_split",
-    hidden = { "preview" },
-    layout = {
-      width = 0.8,
-      height = 0.25,
-    }
-  }
+    height = 15,
+    width = 80,
+  },
+  use_snacks = false -- default to false for backward compatibility
 }
 
 -- Update column width based on current window size
@@ -115,49 +112,114 @@ function M.open_workspace_popup(workspace, _)
 
   local projects = find_git_projects(workspace.path, M.config.max_depth)
 
-  -- Transform projects for Snacks
-  local items = {}
-  for _, project in ipairs(projects) do
-    table.insert(items, {
-      label = project.name,
-      description = project.parent,
-      value = project
-    })
-  end
+  if M.config.use_snacks then
+    -- Use Snacks picker
+    local items = {}
+    for _, project in ipairs(projects) do
+      table.insert(items, {
+        label = project.name,
+        description = project.parent,
+        value = project
+      })
+    end
 
-  require("snacks").picker.select({
-    items = items,
-    title = "Select a project in " .. workspace.name,
-    layout = M.config.layout_config,
-    on_choice = function(choice)
-      if not choice then return end
+    local snacks = require("snacks").picker
+    snacks.select({
+      items = items,
+      title = "Select a project in " .. workspace.name,
+      layout = "ivy_split",
+      on_choice = function(choice)
+        if not choice then return end
 
-      if type(choice) == "table" and #choice > 0 then
-        -- Handle multiple selections
-        local completed = 0
-        local total = #choice
+        if type(choice) == "table" and #choice > 0 then
+          -- Handle multiple selections
+          local completed = 0
+          local total = #choice
 
-        for _, item in ipairs(choice) do
-          local project = item.value
+          for _, item in ipairs(choice) do
+            local project = item.value
+            local session_name = string.lower(project.name):gsub("[^%w_]", "_")
+
+            run_nvim_in_session(session_name, project.path, function()
+              completed = completed + 1
+              print(string.format("Created tmux session with nvim (%d/%d): %s", completed, total, session_name))
+            end)
+          end
+        else
+          -- Handle single selection
+          local project = choice.value
           local session_name = string.lower(project.name):gsub("[^%w_]", "_")
 
           run_nvim_in_session(session_name, project.path, function()
-            completed = completed + 1
-            print(string.format("Created tmux session with nvim (%d/%d): %s", completed, total, session_name))
+            switch_tmux_session(session_name)
+            print("Created and switched to session: " .. session_name .. " with " .. M.config.nvim_alias)
           end)
         end
-      else
-        -- Handle single selection
-        local project = choice.value
-        local session_name = string.lower(project.name):gsub("[^%w_]", "_")
-
-        run_nvim_in_session(session_name, project.path, function()
-          switch_tmux_session(session_name)
-          print("Created and switched to session: " .. session_name .. " with " .. M.config.nvim_alias)
-        end)
       end
-    end
-  })
+    })
+  else
+    -- Use Telescope
+    local pickers = require('telescope.pickers')
+    local finders = require('telescope.finders')
+    local conf = require('telescope.config').values
+    local actions = require('telescope.actions')
+    local action_state = require('telescope.actions.state')
+
+    pickers.new({
+      layout_config = M.config.layout_config
+    }, {
+      prompt_title = "Select a project in " .. workspace.name,
+      finder = finders.new_table {
+        results = projects,
+        entry_maker = function(entry)
+          local display_width = vim.o.columns - 4
+          local column_width = math.floor((display_width - 20) / 2)
+          column_width = math.max(1, math.min(column_width, 50))
+          local name_format = "%-" .. column_width .. "." .. column_width .. "s"
+          local parent_format = "%-" .. column_width .. "." .. column_width .. "s"
+          return {
+            value = entry,
+            display = string.format(name_format .. "     " .. parent_format, entry.name, entry.parent),
+            ordinal = entry.parent .. " " .. entry.name,
+          }
+        end
+      },
+      sorter = conf.generic_sorter({}),
+      attach_mappings = function(prompt_bufnr)
+        actions.select_default:replace(function()
+          local picker = action_state.get_current_picker(prompt_bufnr)
+          local selections = picker:get_multi_selection()
+
+          actions.close(prompt_bufnr)
+
+          if #selections > 0 then
+            local completed = 0
+            local total = #selections
+
+            for _, selection in ipairs(selections) do
+              local project = selection.value
+              local session_name = string.lower(project.name):gsub("[^%w_]", "_")
+
+              run_nvim_in_session(session_name, project.path, function()
+                completed = completed + 1
+                print(string.format("Created tmux session with nvim (%d/%d): %s", completed, total, session_name))
+              end)
+            end
+          else
+            local selection = action_state.get_selected_entry()
+            local project = selection.value
+            local session_name = string.lower(project.name):gsub("[^%w_]", "_")
+            run_nvim_in_session(session_name, project.path, function()
+              switch_tmux_session(session_name)
+              print("Created and switched to session: " .. session_name .. " with " .. M.config.nvim_alias)
+            end)
+          end
+        end)
+
+        return true
+      end,
+    }):find()
+  end
 end
 
 local function get_non_current_tmux_sessions()
@@ -185,62 +247,149 @@ function M.tmux_sessions()
   local sessions = get_non_current_tmux_sessions()
   table.sort(sessions)
 
-  -- Transform sessions for Snacks
-  local items = {}
-  for _, session in ipairs(sessions) do
-    table.insert(items, {
-      label = session,
-      value = session
-    })
-  end
+  if M.config.use_snacks then
+    -- Use Snacks picker
+    local items = {}
+    for _, session in ipairs(sessions) do
+      table.insert(items, {
+        label = session,
+        value = session
+      })
+    end
 
-  require("snacks").picker.select({
-    items = items,
-    prompt = "Switch Tmux Session",
-    layout = M.config.layout_config,
-    on_choice = function(choice)
-      if not choice then return end
-
-      if type(choice) == "table" and not (#choice > 0) then
-        -- Single selection
-        switch_tmux_session(choice.value)
-      end
-    end,
-    keymaps = {
-      ["<C-d>"] = function(state)
-        local selected = state.selected
-        if selected then
-          if type(selected) == "table" and #selected > 0 then
-            -- Multiple selections
-            for _, item in ipairs(selected) do
-              os.execute("tmux kill-session -t " .. vim.fn.shellescape(item.value))
+    local snacks = require("snacks").picker
+    snacks.select({
+      items = items,
+      title = "Switch Tmux Session",
+      layout = "ivy_split",
+      on_choice = function(choice)
+        if choice then
+          switch_tmux_session(choice.value)
+        end
+      end,
+      keys = {
+        ["<C-d>"] = function(state)
+          local selected = state.selected
+          if selected then
+            if type(selected) == "table" and #selected > 0 then
+              -- Multiple selections
+              for _, item in ipairs(selected) do
+                os.execute("tmux kill-session -t " .. vim.fn.shellescape(item.value))
+              end
+            else
+              -- Single selection
+              os.execute("tmux kill-session -t " .. vim.fn.shellescape(selected.value))
             end
-          else
-            -- Single selection
-            os.execute("tmux kill-session -t " .. vim.fn.shellescape(selected.value))
-          end
 
-          -- Refresh the list
-          local new_sessions = get_non_current_tmux_sessions()
-          table.sort(new_sessions)
+            -- Refresh the list
+            local new_sessions = get_non_current_tmux_sessions()
+            table.sort(new_sessions)
 
-          local new_items = {}
-          for _, session in ipairs(new_sessions) do
-            table.insert(new_items, {
-              label = session,
-              value = session
-            })
-          end
+            local new_items = {}
+            for _, session in ipairs(new_sessions) do
+              table.insert(new_items, {
+                label = session,
+                value = session
+              })
+            end
 
-          if #new_items == 0 then
-            state.close()
-          else
-            state.items = new_items
+            if #new_items == 0 then
+              state.close()
+            else
+              state.items = new_items
+            end
           end
         end
-      end
-    }
-  })
+      }
+    })
+  else
+    -- Use Telescope
+    local pickers = require('telescope.pickers')
+    local finders = require('telescope.finders')
+    local conf = require('telescope.config').values
+    local actions = require('telescope.actions')
+    local action_state = require('telescope.actions.state')
+
+    pickers.new({
+      layout_config = M.config.layout_config
+    }, {
+      prompt_title = "Switch Tmux Session",
+      finder = finders.new_table {
+        results = sessions,
+        entry_maker = function(entry)
+          return {
+            value = entry,
+            display = entry,
+            ordinal = entry,
+          }
+        end
+      },
+      sorter = conf.generic_sorter({}),
+      attach_mappings = function(prompt_bufnr, map)
+        actions.select_default:replace(function()
+          actions.close(prompt_bufnr)
+          local selection = action_state.get_selected_entry()
+          switch_tmux_session(selection.value)
+        end)
+
+        map("i", "<C-d>", function()
+          local picker = action_state.get_current_picker(prompt_bufnr)
+          local selections = picker:get_multi_selection()
+          local sessions_to_kill = {}
+
+          -- Collect sessions to delete
+          if #selections > 0 then
+            for _, sel in ipairs(selections) do
+              table.insert(sessions_to_kill, sel.value)
+            end
+          else
+            local selection = action_state.get_selected_entry()
+            if not selection then return end
+            table.insert(sessions_to_kill, selection.value)
+          end
+
+          -- Kill sessions
+          for _, session in ipairs(sessions_to_kill) do
+            os.execute("tmux kill-session -t " .. vim.fn.shellescape(session))
+          end
+
+          -- Only refresh if buffer is still valid
+          if vim.api.nvim_buf_is_valid(prompt_bufnr) then
+            local new_sessions = get_non_current_tmux_sessions()
+            table.sort(new_sessions)
+
+            if #new_sessions == 0 then
+              actions.close(prompt_bufnr)
+              return
+            end
+
+            local new_finder = finders.new_table({
+              results = new_sessions,
+              entry_maker = function(entry)
+                return {
+                  value = entry,
+                  display = entry,
+                  ordinal = entry,
+                }
+              end
+            })
+
+            -- Schedule refresh to avoid race conditions
+            vim.schedule(function()
+              if vim.api.nvim_buf_is_valid(prompt_bufnr) then
+                picker:refresh(new_finder, {
+                  reset_prompt = true,
+                  new_prefix = picker.prompt_prefix
+                })
+              end
+            end)
+          end
+        end)
+
+        return true
+      end,
+    }):find()
+  end
 end
 
 function M.setup(opts)
@@ -258,24 +407,59 @@ function M.setup(opts)
     if #M.workspaces == 1 then
       M.open_workspace_popup(M.workspaces[1])
     else
-      local workspace_items = {}
-      for _, workspace in ipairs(M.workspaces) do
-        table.insert(workspace_items, {
-          label = workspace.name,
-          value = workspace
-        })
-      end
-
-      require("snacks").picker.select({
-        items = workspace_items,
-        title = "Select Workspace",
-        layout = M.config.layout_config,
-        on_choice = function(choice)
-          if choice then
-            M.open_workspace_popup(choice.value)
-          end
+      if M.config.use_snacks then
+        -- Use Snacks picker
+        local workspace_items = {}
+        for _, workspace in ipairs(M.workspaces) do
+          table.insert(workspace_items, {
+            label = workspace.name,
+            value = workspace
+          })
         end
-      })
+
+        require("snacks").picker.select({
+          items = workspace_items,
+          title = "Select Workspace",
+          layout = "ivy_split",
+          on_choice = function(choice)
+            if choice then
+              M.open_workspace_popup(choice.value)
+            end
+          end
+        })
+      else
+        -- Use Telescope
+        local pickers = require('telescope.pickers')
+        local finders = require('telescope.finders')
+        local conf = require('telescope.config').values
+        local actions = require('telescope.actions')
+        local action_state = require('telescope.actions.state')
+
+        pickers.new({
+          layout_config = M.config.layout_config
+        }, {
+          prompt_title = "Select Workspace",
+          finder = finders.new_table {
+            results = M.workspaces,
+            entry_maker = function(entry)
+              return {
+                value = entry,
+                display = entry.name,
+                ordinal = entry.name,
+              }
+            end
+          },
+          sorter = conf.generic_sorter({}),
+          attach_mappings = function(prompt_bufnr)
+            actions.select_default:replace(function()
+              actions.close(prompt_bufnr)
+              local selection = action_state.get_selected_entry()
+              M.open_workspace_popup(selection.value)
+            end)
+            return true
+          end,
+        }):find()
+      end
     end
   end, {})
 
