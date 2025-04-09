@@ -223,17 +223,20 @@ M.find_git_projects = find_git_projects
 --   }):find()
 -- end
 
+
 function M.open_workspace_popup(workspace, opts)
   if not is_tmux_running() then
     print("Not in a tmux session")
     return
   end
 
+  -- Create a custom highlight group with the exact color you want
+  vim.api.nvim_set_hl(0, "TmuxerProjectName", { fg = "#9E8069" })
+
   local projects = find_git_projects(workspace.path, M.config.max_depth)
 
   -- Apply theme to picker
   local picker_opts = apply_theme(opts)
-
   pickers.new(picker_opts, {
     prompt_title = "Select a project in " .. workspace.name,
     finder = finders.new_table {
@@ -256,17 +259,13 @@ function M.open_workspace_popup(workspace, opts)
       actions.select_default:replace(function()
         local picker = action_state.get_current_picker(prompt_bufnr)
         local selections = picker:get_multi_selection()
-
         actions.close(prompt_bufnr)
-
         if #selections > 0 then
           local completed = 0
           local total = #selections
-
           for _, selection in ipairs(selections) do
             local project = selection.value
             local session_name = string.lower(project.name):gsub("[^%w_]", "_")
-
             run_nvim_in_session(session_name, project.path, function()
               completed = completed + 1
               print(string.format("Created tmux session with nvim (%d/%d): %s", completed, total, session_name))
@@ -282,16 +281,14 @@ function M.open_workspace_popup(workspace, opts)
           end)
         end
       end)
-
       return true
     end,
     -- Add custom highlighting for the project name
     make_entry = {
       display = function(entry)
-        -- Apply custom highlighting to the project name (first part)
-        -- The #9E8069 color is approximated using a named highlight group
+        -- Apply our custom highlight group to the project name (first part)
         return entry.display, {
-          {{{ 0, entry.name_length }, "Special"}}, -- This will be close to your desired color or can be customized
+          { { { 0, entry.name_length }, "TmuxerProjectName" } },
         }
       end,
     },
