@@ -15,9 +15,10 @@ M.config = {
     height = 15,
     width = 80,
   },
-  theme = nil,                    -- Default theme (nil means no theme)
-  previewer = true,               -- Default previewer setting
+  theme = nil, -- Default theme (nil means no theme)
+  previewer = true, -- Default previewer setting
   project_name_color = "#9E8069", -- Default color for project names
+  max_depth = 2, -- Default max depth for git project search
 }
 
 -- Helper function to apply telescope theme if available
@@ -72,6 +73,7 @@ end
 local function is_tmux_running()
   return vim.fn.exists('$TMUX') == 1
 end
+M.is_tmux_running = is_tmux_running
 
 -- Async version of create_tmux_session
 local function create_tmux_session(session_name, project_path, callback)
@@ -96,10 +98,12 @@ local function run_nvim_in_session(session_name, project_path, callback)
     })
   end)
 end
+M.run_nvim_in_session = run_nvim_in_session
 
 local function switch_tmux_session(session_name)
   os.execute("tmux switch-client -t " .. session_name)
 end
+M.switch_tmux_session = switch_tmux_session
 
 local function find_git_projects(workspace_path, max_depth)
   -- Use fd if available for faster searching
@@ -152,6 +156,7 @@ local function find_git_projects(workspace_path, max_depth)
 
   return results
 end
+M.find_git_projects = find_git_projects
 
 function M.open_workspace_popup(workspace, opts)
   if not is_tmux_running() then
@@ -169,15 +174,15 @@ function M.open_workspace_popup(workspace, opts)
     finder = finders.new_table {
       results = projects,
       entry_maker = function(entry)
-        -- Create colored project name with direct Vim syntax highlighting
-        local colored_name = string.format("%%#TmuxerProjectName#%s%%#Normal#", entry.name)
-        -- Create the display string with the colored project name and separator
-        local display_string = colored_name .. "/" .. entry.parent
+        -- Create a single string with a separator
+        local display_string = entry.name .. "/" .. entry.parent
 
         return {
           value = entry,
           display = display_string,
           ordinal = entry.parent .. " " .. entry.name,
+          -- Store the name length for highlighting
+          name_length = #entry.name,
         }
       end
     },
@@ -215,6 +220,20 @@ function M.open_workspace_popup(workspace, opts)
 
       return true
     end,
+    -- Use Telescope's native highlighting
+    make_entry = {
+      display = function(entry)
+        -- Apply highlighting to the project name part
+        local highlights = {
+          {
+            { start = 0, end_ = entry.name_length },
+            "TmuxerProjectName"
+          }
+        }
+
+        return entry.display, highlights
+      end
+    }
   }):find()
 end
 
@@ -233,6 +252,7 @@ local function get_non_current_tmux_sessions()
 
   return sessions
 end
+M.get_non_current_tmux_sessions = get_non_current_tmux_sessions
 
 function M.tmux_sessions(opts)
   if not is_tmux_running() then
@@ -335,6 +355,7 @@ function M.setup(opts)
   -- Re-create the highlight when colorscheme changes
   vim.api.nvim_create_autocmd("ColorScheme", {
     pattern = "*",
+    group = vim.api.nvim_create_augroup("TmuxerHighlightSetup", { clear = true }),
     callback = function()
       vim.api.nvim_set_hl(0, "TmuxerProjectName", { fg = M.config.project_name_color })
     end
