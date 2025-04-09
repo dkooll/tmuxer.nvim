@@ -156,73 +156,6 @@ local function find_git_projects(workspace_path, max_depth)
 end
 M.find_git_projects = find_git_projects
 
-function M.open_workspace_popup(workspace, opts)
-  if not is_tmux_running() then
-    print("Not in a tmux session")
-    return
-  end
-
-  local projects = find_git_projects(workspace.path, M.config.max_depth)
-
-  -- Apply theme to picker
-  local picker_opts = apply_theme(opts)
-
-  pickers.new(picker_opts, {
-    prompt_title = "Select a project in " .. workspace.name,
-    finder = finders.new_table {
-      results = projects,
-      entry_maker = function(entry)
-        local display_width = vim.o.columns - 4
-        local column_width = math.floor((display_width - 20) / 2)
-        column_width = math.max(1, math.min(column_width, 50))
-        local name_format = "%-" .. column_width .. "." .. column_width .. "s"
-        local parent_format = "%-" .. column_width .. "." .. column_width .. "s"
-
-        -- Increase the spacing between columns (from 5 spaces to 15 spaces)
-        return {
-          value = entry,
-          display = string.format(name_format .. "               " .. parent_format, entry.name, entry.parent),
-          ordinal = entry.parent .. " " .. entry.name,
-        }
-      end
-    },
-    sorter = conf.generic_sorter({}),
-    attach_mappings = function(prompt_bufnr)
-      actions.select_default:replace(function()
-        local picker = action_state.get_current_picker(prompt_bufnr)
-        local selections = picker:get_multi_selection()
-
-        actions.close(prompt_bufnr)
-
-        if #selections > 0 then
-          local completed = 0
-          local total = #selections
-
-          for _, selection in ipairs(selections) do
-            local project = selection.value
-            local session_name = string.lower(project.name):gsub("[^%w_]", "_")
-
-            run_nvim_in_session(session_name, project.path, function()
-              completed = completed + 1
-              print(string.format("Created tmux session with nvim (%d/%d): %s", completed, total, session_name))
-            end)
-          end
-        else
-          local selection = action_state.get_selected_entry()
-          local project = selection.value
-          local session_name = string.lower(project.name):gsub("[^%w_]", "_")
-          run_nvim_in_session(session_name, project.path, function()
-            switch_tmux_session(session_name)
-            print("Created and switched to session: " .. session_name .. " with " .. M.config.nvim_alias)
-          end)
-        end
-      end)
-
-      return true
-    end,
-  }):find()
-end
-
 -- function M.open_workspace_popup(workspace, opts)
 --   if not is_tmux_running() then
 --     print("Not in a tmux session")
@@ -244,9 +177,11 @@ end
 --         column_width = math.max(1, math.min(column_width, 50))
 --         local name_format = "%-" .. column_width .. "." .. column_width .. "s"
 --         local parent_format = "%-" .. column_width .. "." .. column_width .. "s"
+--
+--         -- Increase the spacing between columns (from 5 spaces to 15 spaces)
 --         return {
 --           value = entry,
---           display = string.format(name_format .. "     " .. parent_format, entry.name, entry.parent),
+--           display = string.format(name_format .. "               " .. parent_format, entry.name, entry.parent),
 --           ordinal = entry.parent .. " " .. entry.name,
 --         }
 --       end
@@ -287,6 +222,81 @@ end
 --     end,
 --   }):find()
 -- end
+
+function M.open_workspace_popup(workspace, opts)
+  if not is_tmux_running() then
+    print("Not in a tmux session")
+    return
+  end
+
+  local projects = find_git_projects(workspace.path, M.config.max_depth)
+
+  -- Apply theme to picker
+  local picker_opts = apply_theme(opts)
+
+  pickers.new(picker_opts, {
+    prompt_title = "Select a project in " .. workspace.name,
+    finder = finders.new_table {
+      results = projects,
+      entry_maker = function(entry)
+        -- Create a single string with a separator
+        local display_string = entry.name .. "/" .. entry.parent
+
+        return {
+          value = entry,
+          display = display_string,
+          ordinal = entry.parent .. " " .. entry.name,
+          -- Store the name length for highlighting
+          name_length = #entry.name,
+        }
+      end
+    },
+    sorter = conf.generic_sorter({}),
+    attach_mappings = function(prompt_bufnr)
+      actions.select_default:replace(function()
+        local picker = action_state.get_current_picker(prompt_bufnr)
+        local selections = picker:get_multi_selection()
+
+        actions.close(prompt_bufnr)
+
+        if #selections > 0 then
+          local completed = 0
+          local total = #selections
+
+          for _, selection in ipairs(selections) do
+            local project = selection.value
+            local session_name = string.lower(project.name):gsub("[^%w_]", "_")
+
+            run_nvim_in_session(session_name, project.path, function()
+              completed = completed + 1
+              print(string.format("Created tmux session with nvim (%d/%d): %s", completed, total, session_name))
+            end)
+          end
+        else
+          local selection = action_state.get_selected_entry()
+          local project = selection.value
+          local session_name = string.lower(project.name):gsub("[^%w_]", "_")
+          run_nvim_in_session(session_name, project.path, function()
+            switch_tmux_session(session_name)
+            print("Created and switched to session: " .. session_name .. " with " .. M.config.nvim_alias)
+          end)
+        end
+      end)
+
+      return true
+    end,
+    -- Add custom highlighting for the project name
+    make_entry = {
+      display = function(entry)
+        -- Apply custom highlighting to the project name (first part)
+        -- The #9E8069 color is approximated using a named highlight group
+        return entry.display, {
+          {{{ 0, entry.name_length }, "Special"}}, -- This will be close to your desired color or can be customized
+        }
+      end,
+    },
+  }):find()
+end
 
 local function get_non_current_tmux_sessions()
   local sessions_output = vim.fn.systemlist(
