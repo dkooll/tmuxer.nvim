@@ -5,7 +5,6 @@ local finders = require('telescope.finders')
 local conf = require('telescope.config').values
 local actions = require('telescope.actions')
 local action_state = require('telescope.actions.state')
-local themes = require('telescope.themes')
 
 -- Column width cache for performance
 local cached_column_width
@@ -16,8 +15,51 @@ M.config = {
     height = 15,
     width = 80,
   },
-  theme = "ivy" -- Default theme
+  theme = nil, -- Default theme (nil means no theme)
+  previewer = true, -- Default previewer setting
 }
+
+-- Helper function to apply telescope theme if available
+local function apply_theme(opts)
+  opts = opts or {}
+
+  -- If no theme specified, just return the basic config
+  if not opts.theme and not M.config.theme then
+    return {
+      layout_config = vim.tbl_deep_extend("force", M.config.layout_config, (opts.layout_config or {}))
+    }
+  end
+
+  -- Try to load telescope themes
+  local status, themes = pcall(require, 'telescope.themes')
+  if not status then
+    -- Fallback if telescope.themes not available
+    return {
+      layout_config = vim.tbl_deep_extend("force", M.config.layout_config, (opts.layout_config or {}))
+    }
+  end
+
+  -- Get theme name from options or config
+  local theme_name = opts.theme or M.config.theme
+
+  -- Build theme options
+  local theme_opts = {
+    layout_config = vim.tbl_deep_extend("force", M.config.layout_config, (opts.layout_config or {})),
+    previewer = opts.previewer ~= nil and opts.previewer or M.config.previewer
+  }
+
+  -- Apply the appropriate theme
+  if theme_name == "dropdown" then
+    return themes.get_dropdown(theme_opts)
+  elseif theme_name == "cursor" then
+    return themes.get_cursor(theme_opts)
+  elseif theme_name == "ivy" then
+    return themes.get_ivy(theme_opts)
+  else
+    -- Default to no theme transformation
+    return theme_opts
+  end
+end
 
 -- Update column width based on current window size
 local function update_column_width()
@@ -29,6 +71,7 @@ end
 local function is_tmux_running()
   return vim.fn.exists('$TMUX') == 1
 end
+M.is_tmux_running = is_tmux_running
 
 -- Async version of create_tmux_session
 local function create_tmux_session(session_name, project_path, callback)
@@ -53,10 +96,12 @@ local function run_nvim_in_session(session_name, project_path, callback)
     })
   end)
 end
+M.run_nvim_in_session = run_nvim_in_session
 
 local function switch_tmux_session(session_name)
   os.execute("tmux switch-client -t " .. session_name)
 end
+M.switch_tmux_session = switch_tmux_session
 
 local function find_git_projects(workspace_path, max_depth)
   -- Use fd if available for faster searching
@@ -109,6 +154,7 @@ local function find_git_projects(workspace_path, max_depth)
 
   return results
 end
+M.find_git_projects = find_git_projects
 
 function M.open_workspace_popup(workspace, opts)
   if not is_tmux_running() then
@@ -116,12 +162,10 @@ function M.open_workspace_popup(workspace, opts)
     return
   end
 
-  local projects = find_git_projects(workspace.path, M.config.max_depth or 2)
+  local projects = find_git_projects(workspace.path, M.config.max_depth)
 
-  -- Get telescope picker options with theme
-  local picker_opts = themes.get_theme(opts and opts.theme or M.config.theme or "dropdown", {
-    layout_config = vim.tbl_deep_extend("force", M.config.layout_config, (opts and opts.layout_config) or {})
-  })
+  -- Apply theme to picker
+  local picker_opts = apply_theme(opts)
 
   pickers.new(picker_opts, {
     prompt_title = "Select a project in " .. workspace.name,
@@ -192,6 +236,7 @@ local function get_non_current_tmux_sessions()
 
   return sessions
 end
+M.get_non_current_tmux_sessions = get_non_current_tmux_sessions
 
 function M.tmux_sessions(opts)
   if not is_tmux_running() then
@@ -202,10 +247,8 @@ function M.tmux_sessions(opts)
   local sessions = get_non_current_tmux_sessions()
   table.sort(sessions)
 
-  -- Get telescope picker options with theme
-  local picker_opts = themes.get_theme(opts and opts.theme or M.config.theme or "dropdown", {
-    layout_config = vim.tbl_deep_extend("force", M.config.layout_config, (opts and opts.layout_config) or {})
-  })
+  -- Apply theme to picker
+  local picker_opts = apply_theme(opts)
 
   pickers.new(picker_opts, {
     prompt_title = "Switch Tmux Session",
@@ -301,10 +344,8 @@ function M.setup(opts)
     if #M.workspaces == 1 then
       M.open_workspace_popup(M.workspaces[1])
     else
-      -- Get telescope picker options with theme
-      local picker_opts = themes.get_theme(M.config.theme or "dropdown", {
-        layout_config = M.config.layout_config
-      })
+      -- Apply theme to the workspace picker too
+      local picker_opts = apply_theme()
 
       pickers.new(picker_opts, {
         prompt_title = "Select Workspace",
