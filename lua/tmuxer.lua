@@ -15,11 +15,10 @@ M.config = {
     height = 15,
     width = 80,
   },
-  theme = nil,                  -- Default theme (nil means no theme)
-  previewer = true,             -- Default previewer setting
-  border = true,                -- Default border setting (true = show borders)
-  max_depth = 2,                -- Default max depth for git project search
-  parent_dir_color = "#9E8069", -- Default color for parent directory
+  theme = nil,      -- Default theme (nil means no theme)
+  previewer = true, -- Default previewer setting
+  border = true,    -- Default border setting (true = show borders)
+  max_depth = 2,    -- Default max depth for git project search
 }
 
 -- Helper function to apply telescope theme if available
@@ -185,9 +184,6 @@ function M.open_workspace_popup(workspace, opts)
           value = entry,
           display = display_string,
           ordinal = entry.name .. " " .. entry.parent,
-          -- Store the positions for highlighting
-          name_end = #entry.name,
-          parent_start = #entry.name + 1,
         }
       end
     },
@@ -225,20 +221,6 @@ function M.open_workspace_popup(workspace, opts)
 
       return true
     end,
-    -- Add custom highlighting for the parent directory
-    make_entry = {
-      display = function(entry)
-        -- Apply highlighting to the parent directory part (after the slash)
-        local highlights = {
-          {
-            { start = entry.parent_start, end_ = #entry.display },
-            "TmuxerParentDir"
-          }
-        }
-
-        return entry.display, highlights
-      end
-    }
   }):find()
 end
 
@@ -353,18 +335,6 @@ end
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
   M.workspaces = opts.workspaces or {}
-
-  -- Create the highlight group for parent directory
-  vim.api.nvim_set_hl(0, "TmuxerParentDir", { fg = M.config.parent_dir_color })
-
-  -- Re-create the highlight when colorscheme changes
-  vim.api.nvim_create_autocmd("ColorScheme", {
-    pattern = "*",
-    group = vim.api.nvim_create_augroup("TmuxerHighlightSetup", { clear = true }),
-    callback = function()
-      vim.api.nvim_set_hl(0, "TmuxerParentDir", { fg = M.config.parent_dir_color })
-    end
-  })
 
   update_column_width()
 
