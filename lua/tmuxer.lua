@@ -15,8 +15,9 @@ M.config = {
     height = 15,
     width = 80,
   },
-  theme = nil,      -- Default theme (nil means no theme)
-  previewer = true, -- Default previewer setting
+  theme = nil,                    -- Default theme (nil means no theme)
+  previewer = true,               -- Default previewer setting
+  project_name_color = "#9E8069", -- Default color for project names
 }
 
 -- Helper function to apply telescope theme if available
@@ -71,7 +72,6 @@ end
 local function is_tmux_running()
   return vim.fn.exists('$TMUX') == 1
 end
-M.is_tmux_running = is_tmux_running
 
 -- Async version of create_tmux_session
 local function create_tmux_session(session_name, project_path, callback)
@@ -96,12 +96,10 @@ local function run_nvim_in_session(session_name, project_path, callback)
     })
   end)
 end
-M.run_nvim_in_session = run_nvim_in_session
 
 local function switch_tmux_session(session_name)
   os.execute("tmux switch-client -t " .. session_name)
 end
-M.switch_tmux_session = switch_tmux_session
 
 local function find_git_projects(workspace_path, max_depth)
   -- Use fd if available for faster searching
@@ -154,7 +152,6 @@ local function find_git_projects(workspace_path, max_depth)
 
   return results
 end
-M.find_git_projects = find_git_projects
 
 function M.open_workspace_popup(workspace, opts)
   if not is_tmux_running() then
@@ -172,16 +169,14 @@ function M.open_workspace_popup(workspace, opts)
     finder = finders.new_table {
       results = projects,
       entry_maker = function(entry)
-        local display_width = vim.o.columns - 4
-        local column_width = math.floor((display_width - 20) / 2)
-        column_width = math.max(1, math.min(column_width, 50))
-        local name_format = "%-" .. column_width .. "." .. column_width .. "s"
-        local parent_format = "%-" .. column_width .. "." .. column_width .. "s"
+        -- Create colored project name with direct Vim syntax highlighting
+        local colored_name = string.format("%%#TmuxerProjectName#%s%%#Normal#", entry.name)
+        -- Create the display string with the colored project name and separator
+        local display_string = colored_name .. "/" .. entry.parent
 
-        -- Increase the spacing between columns (from 5 spaces to 15 spaces)
         return {
           value = entry,
-          display = string.format(name_format .. "               " .. parent_format, entry.name, entry.parent),
+          display = display_string,
           ordinal = entry.parent .. " " .. entry.name,
         }
       end
@@ -238,7 +233,6 @@ local function get_non_current_tmux_sessions()
 
   return sessions
 end
-M.get_non_current_tmux_sessions = get_non_current_tmux_sessions
 
 function M.tmux_sessions(opts)
   if not is_tmux_running() then
@@ -335,6 +329,17 @@ function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
   M.workspaces = opts.workspaces or {}
 
+  -- Create the highlight group with the custom color
+  vim.api.nvim_set_hl(0, "TmuxerProjectName", { fg = M.config.project_name_color })
+
+  -- Re-create the highlight when colorscheme changes
+  vim.api.nvim_create_autocmd("ColorScheme", {
+    pattern = "*",
+    callback = function()
+      vim.api.nvim_set_hl(0, "TmuxerProjectName", { fg = M.config.project_name_color })
+    end
+  })
+
   update_column_width()
 
   vim.api.nvim_create_autocmd("VimResized", {
@@ -395,8 +400,52 @@ return M
 --   layout_config = {
 --     height = 15,
 --     width = 80,
---   }
+--   },
+--   theme = nil,      -- Default theme (nil means no theme)
+--   previewer = true, -- Default previewer setting
 -- }
+--
+-- -- Helper function to apply telescope theme if available
+-- local function apply_theme(opts)
+--   opts = opts or {}
+--
+--   -- If no theme specified, just return the basic config
+--   if not opts.theme and not M.config.theme then
+--     return {
+--       layout_config = vim.tbl_deep_extend("force", M.config.layout_config, (opts.layout_config or {}))
+--     }
+--   end
+--
+--   -- Try to load telescope themes
+--   local status, themes = pcall(require, 'telescope.themes')
+--   if not status then
+--     -- Fallback if telescope.themes not available
+--     return {
+--       layout_config = vim.tbl_deep_extend("force", M.config.layout_config, (opts.layout_config or {}))
+--     }
+--   end
+--
+--   -- Get theme name from options or config
+--   local theme_name = opts.theme or M.config.theme
+--
+--   -- Build theme options
+--   local theme_opts = {
+--     layout_config = vim.tbl_deep_extend("force", M.config.layout_config, (opts.layout_config or {})),
+--     previewer = opts.previewer ~= nil and opts.previewer or M.config.previewer
+--   }
+--
+--   -- Apply the appropriate theme
+--   if theme_name == "dropdown" then
+--     return themes.get_dropdown(theme_opts)
+--   elseif theme_name == "cursor" then
+--     return themes.get_cursor(theme_opts)
+--   elseif theme_name == "ivy" then
+--     return themes.get_ivy(theme_opts)
+--   else
+--     -- Default to no theme transformation
+--     return theme_opts
+--   end
+-- end
 --
 -- -- Update column width based on current window size
 -- local function update_column_width()
@@ -408,6 +457,7 @@ return M
 -- local function is_tmux_running()
 --   return vim.fn.exists('$TMUX') == 1
 -- end
+-- M.is_tmux_running = is_tmux_running
 --
 -- -- Async version of create_tmux_session
 -- local function create_tmux_session(session_name, project_path, callback)
@@ -432,10 +482,12 @@ return M
 --     })
 --   end)
 -- end
+-- M.run_nvim_in_session = run_nvim_in_session
 --
 -- local function switch_tmux_session(session_name)
 --   os.execute("tmux switch-client -t " .. session_name)
 -- end
+-- M.switch_tmux_session = switch_tmux_session
 --
 -- local function find_git_projects(workspace_path, max_depth)
 --   -- Use fd if available for faster searching
@@ -488,8 +540,9 @@ return M
 --
 --   return results
 -- end
+-- M.find_git_projects = find_git_projects
 --
--- function M.open_workspace_popup(workspace, _)
+-- function M.open_workspace_popup(workspace, opts)
 --   if not is_tmux_running() then
 --     print("Not in a tmux session")
 --     return
@@ -497,9 +550,10 @@ return M
 --
 --   local projects = find_git_projects(workspace.path, M.config.max_depth)
 --
---   pickers.new({
---     layout_config = M.config.layout_config
---   }, {
+--   -- Apply theme to picker
+--   local picker_opts = apply_theme(opts)
+--
+--   pickers.new(picker_opts, {
 --     prompt_title = "Select a project in " .. workspace.name,
 --     finder = finders.new_table {
 --       results = projects,
@@ -509,9 +563,11 @@ return M
 --         column_width = math.max(1, math.min(column_width, 50))
 --         local name_format = "%-" .. column_width .. "." .. column_width .. "s"
 --         local parent_format = "%-" .. column_width .. "." .. column_width .. "s"
+--
+--         -- Increase the spacing between columns (from 5 spaces to 15 spaces)
 --         return {
 --           value = entry,
---           display = string.format(name_format .. "     " .. parent_format, entry.name, entry.parent),
+--           display = string.format(name_format .. "               " .. parent_format, entry.name, entry.parent),
 --           ordinal = entry.parent .. " " .. entry.name,
 --         }
 --       end
@@ -568,8 +624,9 @@ return M
 --
 --   return sessions
 -- end
+-- M.get_non_current_tmux_sessions = get_non_current_tmux_sessions
 --
--- function M.tmux_sessions()
+-- function M.tmux_sessions(opts)
 --   if not is_tmux_running() then
 --     print("Not in a tmux session")
 --     return
@@ -578,9 +635,10 @@ return M
 --   local sessions = get_non_current_tmux_sessions()
 --   table.sort(sessions)
 --
---   pickers.new({
---     layout_config = M.config.layout_config
---   }, {
+--   -- Apply theme to picker
+--   local picker_opts = apply_theme(opts)
+--
+--   pickers.new(picker_opts, {
 --     prompt_title = "Switch Tmux Session",
 --     finder = finders.new_table {
 --       results = sessions,
@@ -674,9 +732,10 @@ return M
 --     if #M.workspaces == 1 then
 --       M.open_workspace_popup(M.workspaces[1])
 --     else
---       pickers.new({
---         layout_config = M.config.layout_config
---       }, {
+--       -- Apply theme to the workspace picker too
+--       local picker_opts = apply_theme()
+--
+--       pickers.new(picker_opts, {
 --         prompt_title = "Select Workspace",
 --         finder = finders.new_table {
 --           results = M.workspaces,
