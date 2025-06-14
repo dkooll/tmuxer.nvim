@@ -28,19 +28,37 @@ To configure the plugin with [lazy.nvim](https://github.com/folke/lazy.nvim), us
 return {
   "dkooll/tmuxer.nvim",
   dependencies = { "nvim-telescope/telescope.nvim" },
-  opts = {
-    layout_config = {
-      height = 15,
-      width = 80,
-    }
-  },
+  cmd = { "WorkspaceOpen", "TmuxSessions" },
+  config = function()
+    require("tmuxer").setup({
+      workspaces = {
+        {
+          name = "workspaces",
+          path = "~/Documents/workspaces"
+        }
+      },
+      max_depth = 2,
+      theme = "ivy",
+      previewer = false,
+      border = true,
+      parent_highlight = {
+        fg = "#9E8069",
+        bold = true,
+      },
+      layout_config = {
+        width = 0.5,
+        height = 0.31,
+      }
+    })
+  end,
   keys = {
     {
       "<leader>tc",
       function()
-        require("tmuxer").open_workspace_popup(
-          { name = "workspaces", path = "~/Documents/workspaces" }
-        )
+        require("tmuxer").open_workspace_popup({
+          name = "workspaces",
+          path = "~/Documents/workspaces"
+        })
       end,
       desc = "Tmuxer: Create Tmux Session"
     },
@@ -78,6 +96,12 @@ Session names are generated from project names (non-alphanumeric characters repl
 Sessions can be killed directly from the session picker
 
 Multiple projects can be selected at once for batch operations
+
+If you want to use different neovim configurations or versions, you can override the default command within the config
+
+```lua
+nvim_alias = "NVIM_APPNAME=nvim-dev nvim",
+```
 
 ## Contributors
 
