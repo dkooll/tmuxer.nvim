@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/dkooll/tmuxer.nvim/compare/v1.0.0...v1.1.0) (2025-06-14)
+
+
+### Features
+
+* update documentation ([#3](https://github.com/dkooll/tmuxer.nvim/issues/3)) ([e6637a9](https://github.com/dkooll/tmuxer.nvim/commit/e6637a92d1c7439b527dda4164892416eae93e7c))
+
 ## 1.0.0 (2025-03-31)
 
 
