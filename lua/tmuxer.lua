@@ -21,7 +21,7 @@ M.config = {
   previewer = true,
   border = true,
   max_depth = 2,
-  parent_highlight = { fg = "#9E8069" },
+  parent_highlight = { fg = "#9E8069", bold = false },
 }
 
 -- Helper function to apply telescope theme if available
@@ -71,8 +71,7 @@ local function is_tmux_running()
 end
 
 local function session_exists(session_name)
-  local result = vim.fn.system("tmux has-session -t " ..
-    vim.fn.shellescape(session_name) .. " 2>/dev/null && echo 1 || echo 0")
+  local result = vim.fn.system("tmux has-session -t=" .. vim.fn.shellescape(session_name) .. " 2>/dev/null && echo 1 || echo 0")
   return vim.trim(result) == "1"
 end
 
