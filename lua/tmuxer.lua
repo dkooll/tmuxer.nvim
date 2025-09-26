@@ -30,6 +30,7 @@ local function apply_theme(opts)
   if not opts.theme and not M.config.theme then
     return {
       layout_config = vim.tbl_deep_extend("force", M.config.layout_config, (opts.layout_config or {})),
+      previewer = opts.previewer ~= nil and opts.previewer or M.config.previewer,
       border = opts.border ~= nil and opts.border or M.config.border,
     }
   end
