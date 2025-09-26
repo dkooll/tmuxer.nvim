@@ -142,6 +142,23 @@ local function create_tmux_session_with_nvim(session_name, project_path, existin
   })
 end
 
+function M.tmux_last_session()
+  if not is_tmux_running() then
+    print("Not in a tmux session")
+    return
+  end
+
+  vim.fn.jobstart({ "tmux", "switch-client", "-l" }, {
+    on_exit = function(_, code)
+      if code == 0 then
+        print("Switched to last tmux session")
+      else
+        print("No previous tmux session found")
+      end
+    end,
+  })
+end
+
 local function find_git_projects(workspace_path, max_depth)
   local has_fd = vim.fn.executable('fd') == 1
   local expanded_path = vim.fn.expand(workspace_path)
@@ -422,6 +439,7 @@ function M.setup(opts)
   end, {})
 
   vim.api.nvim_create_user_command("TmuxSessions", M.tmux_sessions, {})
+  vim.api.nvim_create_user_command("TmuxerLast", M.tmux_last_session, {})
 end
 
 return M

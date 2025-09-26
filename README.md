@@ -20,6 +20,8 @@ Kill tmux sessions without leaving Neovim
 
 Smart project sorting by parent directories
 
+Jump back to the most recently attached tmux session
+
 ## Usage
 
 To configure the plugin with [lazy.nvim](https://github.com/folke/lazy.nvim), use the following setup:
