@@ -71,12 +71,6 @@ local function is_tmux_running()
   return vim.fn.exists('$TMUX') == 1
 end
 
-local function session_exists(session_name)
-  local result = vim.fn.system("tmux has-session -t=" ..
-    vim.fn.shellescape(session_name) .. " 2>/dev/null && echo 1 || echo 0")
-  return vim.trim(result) == "1"
-end
-
 local function build_tmux_new_session_cmd(session_name, project_path)
   local cmd = { "tmux", "new-session", "-ds", session_name, "-c", project_path }
   local alias = M.config.nvim_alias or "nvim"
@@ -94,21 +88,57 @@ local function build_tmux_new_session_cmd(session_name, project_path)
   return cmd
 end
 
-local function create_tmux_session_with_nvim(session_name, project_path, callback)
-  if session_exists(session_name) then
-    vim.fn.jobstart({ "tmux", "switch-client", "-t", session_name }, {
-      on_exit = function(_, _) if callback then callback() end end
-    })
-  else
-    vim.fn.jobstart(build_tmux_new_session_cmd(session_name, project_path), {
-      on_exit = function(_, _) if callback then callback() end end
-    })
-  end
-end
-
 local function switch_tmux_session(session_name, callback)
   vim.fn.jobstart({ "tmux", "switch-client", "-t", session_name }, {
     on_exit = function(_, _) if callback then callback() end end
+  })
+end
+
+local function get_tmux_session_name_set()
+  local sessions = {}
+  local output = vim.fn.systemlist("tmux list-sessions -F '#{session_name}'")
+
+  for _, name in ipairs(output) do
+    if name ~= "" then sessions[name] = true end
+  end
+
+  return sessions
+end
+
+local function create_tmux_session_with_nvim(session_name, project_path, existing_sessions, callback)
+  if existing_sessions and existing_sessions[session_name] then
+    switch_tmux_session(session_name, function()
+      if callback then callback() end
+    end)
+    return
+  end
+
+  vim.fn.jobstart(build_tmux_new_session_cmd(session_name, project_path), {
+    on_exit = function(_, code)
+      if code == 0 then
+        if existing_sessions then existing_sessions[session_name] = true end
+        if callback then callback() end
+        return
+      end
+
+      local session_known = existing_sessions and existing_sessions[session_name]
+
+      if not session_known then
+        local refreshed = get_tmux_session_name_set()
+        if refreshed[session_name] then
+          session_known = true
+          if existing_sessions then existing_sessions[session_name] = true end
+        end
+      end
+
+      if session_known then
+        switch_tmux_session(session_name, function()
+          if callback then callback() end
+        end)
+      elseif callback then
+        callback()
+      end
+    end
   })
 end
 
@@ -161,6 +191,7 @@ function M.open_workspace_popup(workspace, opts)
 
   local projects = find_git_projects(workspace.path, M.config.max_depth)
   local picker_opts = apply_theme(opts)
+  local existing_sessions = get_tmux_session_name_set()
 
   local displayer = entry_display.create {
     separator = "/",
@@ -200,7 +231,7 @@ function M.open_workspace_popup(workspace, opts)
           for _, selection in ipairs(selections) do
             local project = selection.value
             local session_name = string.lower(project.name):gsub("[^%w_]", "_")
-            create_tmux_session_with_nvim(session_name, project.path, function()
+            create_tmux_session_with_nvim(session_name, project.path, existing_sessions, function()
               completed = completed + 1
               print(string.format("Created tmux session with nvim (%d/%d): %s", completed, total, session_name))
             end)
@@ -209,7 +240,7 @@ function M.open_workspace_popup(workspace, opts)
           local selection = action_state.get_selected_entry()
           local project = selection.value
           local session_name = string.lower(project.name):gsub("[^%w_]", "_")
-          create_tmux_session_with_nvim(session_name, project.path, function()
+          create_tmux_session_with_nvim(session_name, project.path, existing_sessions, function()
             switch_tmux_session(session_name, function()
               print("Created and switched to session: " .. session_name .. " with " .. M.config.nvim_alias)
             end)
