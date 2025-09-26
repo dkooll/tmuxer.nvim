@@ -71,8 +71,26 @@ local function is_tmux_running()
 end
 
 local function session_exists(session_name)
-  local result = vim.fn.system("tmux has-session -t=" .. vim.fn.shellescape(session_name) .. " 2>/dev/null && echo 1 || echo 0")
+  local result = vim.fn.system("tmux has-session -t=" ..
+  vim.fn.shellescape(session_name) .. " 2>/dev/null && echo 1 || echo 0")
   return vim.trim(result) == "1"
+end
+
+local function build_tmux_new_session_cmd(session_name, project_path)
+  local cmd = { "tmux", "new-session", "-ds", session_name, "-c", project_path }
+  local alias = M.config.nvim_alias or "nvim"
+
+  if type(alias) == "table" then
+    for _, part in ipairs(alias) do
+      table.insert(cmd, part)
+    end
+  else
+    table.insert(cmd, "sh")
+    table.insert(cmd, "-lc")
+    table.insert(cmd, alias)
+  end
+
+  return cmd
 end
 
 local function create_tmux_session_with_nvim(session_name, project_path, callback)
@@ -81,10 +99,7 @@ local function create_tmux_session_with_nvim(session_name, project_path, callbac
       on_exit = function(_, _) if callback then callback() end end
     })
   else
-    vim.fn.jobstart({
-      "tmux", "new-session", "-ds", session_name,
-      "-c", project_path, M.config.nvim_alias
-    }, {
+    vim.fn.jobstart(build_tmux_new_session_cmd(session_name, project_path), {
       on_exit = function(_, _) if callback then callback() end end
     })
   end
