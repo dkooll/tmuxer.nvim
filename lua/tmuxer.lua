@@ -72,7 +72,7 @@ end
 
 local function session_exists(session_name)
   local result = vim.fn.system("tmux has-session -t=" ..
-  vim.fn.shellescape(session_name) .. " 2>/dev/null && echo 1 || echo 0")
+    vim.fn.shellescape(session_name) .. " 2>/dev/null && echo 1 || echo 0")
   return vim.trim(result) == "1"
 end
 
@@ -113,13 +113,15 @@ end
 
 local function find_git_projects(workspace_path, max_depth)
   local has_fd = vim.fn.executable('fd') == 1
+  local expanded_path = vim.fn.expand(workspace_path)
+  local escaped_path = vim.fn.shellescape(expanded_path)
   local cmd = has_fd and string.format(
     "fd -H -t d '^.git$' %s -d %d --exclude 'archive' -x echo {//}",
-    workspace_path,
+    escaped_path,
     max_depth + 1
   ) or string.format(
     "find %s -maxdepth %d -type d -name .git -prune ! -path '*/archive/*' -exec dirname {} \\;",
-    workspace_path,
+    escaped_path,
     max_depth + 1
   )
 
