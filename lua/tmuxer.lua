@@ -335,7 +335,8 @@ function M.tmux_sessions(opts)
 end
 
 function M.setup(opts)
-  M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+  opts = opts or {}
+  M.config = vim.tbl_deep_extend("force", M.config, opts)
   M.workspaces = opts.workspaces or {}
 
   -- Set up parent directory highlight
