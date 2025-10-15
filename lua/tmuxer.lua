@@ -80,7 +80,9 @@ local function build_tmux_new_session_cmd(session_name, project_path)
       table.insert(cmd, part)
     end
   else
-    table.insert(cmd, "sh")
+    -- Use user's default shell instead of sh
+    local shell = vim.env.SHELL or "/bin/zsh"
+    table.insert(cmd, shell)
     table.insert(cmd, "-lc")
     table.insert(cmd, alias)
   end
