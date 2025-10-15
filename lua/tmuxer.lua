@@ -13,6 +13,7 @@ local cached_column_width
 -- Default configuration
 M.config = {
   nvim_alias = "nvim",
+  shell = nil, -- nil means use $SHELL, or set to "zsh", "bash", etc.
   layout_config = {
     height = 15,
     width = 80,
@@ -80,7 +81,9 @@ local function build_tmux_new_session_cmd(session_name, project_path)
       table.insert(cmd, part)
     end
   else
-    table.insert(cmd, "sh")
+    -- Use configured shell, or fall back to $SHELL, or default to zsh
+    local shell = M.config.shell or vim.env.SHELL or "zsh"
+    table.insert(cmd, shell)
     table.insert(cmd, "-lc")
     table.insert(cmd, alias)
   end
