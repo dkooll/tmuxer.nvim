@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.3.0](https://github.com/dkooll/tmuxer.nvim/compare/v1.2.0...v1.3.0) (2025-12-29)
+
+
+### Features
+
+* rename commands and added archive toggle ([#13](https://github.com/dkooll/tmuxer.nvim/issues/13)) ([170a67c](https://github.com/dkooll/tmuxer.nvim/commit/170a67c63745721b2f126aec52b935a09b5ef08f))
+
+
+### Bug Fixes
+
+* correct sorting logic, session parsing ([#11](https://github.com/dkooll/tmuxer.nvim/issues/11)) ([5fa603d](https://github.com/dkooll/tmuxer.nvim/commit/5fa603d3b99acef5989c72b41341da07435f3392))
+
 ## [1.2.0](https://github.com/dkooll/tmuxer.nvim/compare/v1.1.0...v1.2.0) (2025-09-26)
 
 
