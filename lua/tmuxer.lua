@@ -7,11 +7,8 @@ local actions = require('telescope.actions')
 local action_state = require('telescope.actions.state')
 local entry_display = require('telescope.pickers.entry_display')
 
--- Cache for git projects
-local project_cache = {
-  with_archive = nil,
-  without_archive = nil,
-}
+local project_cache = { with_archive = nil, without_archive = nil }
+local has_fd = vim.fn.executable('fd') == 1
 
 M.config = {
   nvim_alias = "nvim",
@@ -37,9 +34,12 @@ local function apply_theme(opts)
   local ok, themes = pcall(require, 'telescope.themes')
   if not ok then return base end
 
-  if theme_name == "dropdown" then return themes.get_dropdown(base)
-  elseif theme_name == "cursor" then return themes.get_cursor(base)
-  elseif theme_name == "ivy" then return themes.get_ivy(base)
+  if theme_name == "dropdown" then
+    return themes.get_dropdown(base)
+  elseif theme_name == "cursor" then
+    return themes.get_cursor(base)
+  elseif theme_name == "ivy" then
+    return themes.get_ivy(base)
   end
   return base
 end
@@ -86,7 +86,6 @@ local function create_tmux_session_with_nvim(session_name, project_path, existin
         if callback then callback() end
         return
       end
-      -- Fallback: check if session exists anyway
       local refreshed = get_tmux_session_name_set()
       if refreshed[session_name] then
         if existing_sessions then existing_sessions[session_name] = true end
@@ -104,19 +103,18 @@ local function find_git_projects(workspace_path, include_archive)
     return project_cache[cache_key]
   end
 
-  local has_fd = vim.fn.executable('fd') == 1
   local expanded = vim.fn.expand(workspace_path)
   local escaped = vim.fn.shellescape(expanded)
 
   local cmd
   if has_fd then
     cmd = include_archive
-      and string.format("fd -H -t d '^.git$' . %s", escaped)
-      or string.format("fd -H -t d '^.git$' --exclude archive . %s", escaped)
+        and string.format("fd -H -t d '^.git$' . %s", escaped)
+        or string.format("fd -H -t d '^.git$' --exclude archive . %s", escaped)
   else
     cmd = include_archive
-      and string.format("find %s -type d -name .git", escaped)
-      or string.format("find %s -type d -name .git ! -path '*/archive/*'", escaped)
+        and string.format("find %s -type d -name .git", escaped)
+        or string.format("find %s -type d -name .git ! -path '*/archive/*'", escaped)
   end
 
   local raw = vim.fn.systemlist(cmd)
@@ -150,7 +148,6 @@ local function find_git_projects(workspace_path, include_archive)
   return results
 end
 
--- Preload cache on setup
 local function preload_cache(workspace_path)
   vim.schedule(function()
     find_git_projects(workspace_path, false)
@@ -204,7 +201,8 @@ function M.open_workspace_popup(workspace, opts)
             local session_name = project.name:lower():gsub("[^%w_]", "_")
             create_tmux_session_with_nvim(session_name, project.path, existing_sessions, function()
               completed = completed + 1
-              vim.notify(string.format("Created session (%d/%d): %s", completed, total, session_name), vim.log.levels.INFO)
+              vim.notify(string.format("Created session (%d/%d): %s", completed, total, session_name),
+                vim.log.levels.INFO)
             end)
           end
         else
@@ -329,7 +327,6 @@ function M.setup(opts)
 
   vim.api.nvim_set_hl(0, "TmuxerParentDir", M.config.parent_highlight)
 
-  -- Preload cache for faster first open
   if #M.workspaces > 0 then
     preload_cache(M.workspaces[1].path)
   end
@@ -362,13 +359,6 @@ function M.setup(opts)
 
   vim.api.nvim_create_user_command("TmuxToggleArchive", function()
     M.config.show_archive = not M.config.show_archive
-    local status = M.config.show_archive and "visible" or "hidden"
-    vim.cmd("redraw")
-    vim.api.nvim_echo({{"Archive: " .. status}}, false, {})
-    vim.defer_fn(function()
-      vim.cmd("redraw")
-      vim.api.nvim_echo({{" "}}, false, {})
-    end, 1500)
   end, {})
 end
 
