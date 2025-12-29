@@ -18,7 +18,6 @@ M.config = {
   theme = nil,
   previewer = true,
   border = true,
-  max_depth = 2,
   parent_highlight = { fg = "#9E8069", bold = false },
   show_archive = false,
 }
