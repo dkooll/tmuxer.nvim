@@ -18,6 +18,7 @@ M.config = {
   border = true,
   parent_highlight = { fg = "#9E8069", bold = false },
   show_archive = false,
+  max_depth = 2,
 }
 
 local function apply_theme(opts)
@@ -105,23 +106,25 @@ local function find_git_projects(workspace_path, include_archive)
 
   local expanded = vim.fn.expand(workspace_path)
   local escaped = vim.fn.shellescape(expanded)
+  local depth = M.config.max_depth + 1
+  local archive_depth = M.config.max_depth + 3  -- archive has extra nesting
 
   local cmd
   if has_fd then
     cmd = include_archive
-        and string.format("fd -H -t d '^.git$' . %s", escaped)
-        or string.format("fd -H -t d '^.git$' --exclude archive . %s", escaped)
+        and string.format("fd -H -t d '^.git$' -d %d . %s -x echo {//}", archive_depth, escaped)
+        or string.format("fd -H -t d '^.git$' -d %d --exclude archive . %s -x echo {//}", depth, escaped)
   else
     cmd = include_archive
-        and string.format("find %s -type d -name .git", escaped)
-        or string.format("find %s -type d -name .git ! -path '*/archive/*'", escaped)
+        and string.format("find %s -maxdepth %d -type d -name .git -exec dirname {} \\;", escaped, archive_depth)
+        or string.format("find %s -maxdepth %d -type d -name .git ! -path '*/archive/*' -exec dirname {} \\;", escaped, depth)
   end
 
   local raw = vim.fn.systemlist(cmd)
   local results = {}
 
   for i = 1, #raw do
-    local project_path = raw[i]:gsub("/.git/?$", "")
+    local project_path = raw[i]
     if project_path ~= "" then
       local name = project_path:match("[^/]+$")
       local parent = project_path:match("([^/]+)/[^/]+$")
@@ -149,10 +152,12 @@ local function find_git_projects(workspace_path, include_archive)
 end
 
 local function preload_cache(workspace_path)
-  vim.schedule(function()
-    find_git_projects(workspace_path, false)
+  -- Preload non-archive immediately (fast)
+  find_git_projects(workspace_path, false)
+  -- Preload archive in background (slower, deeper search)
+  vim.defer_fn(function()
     find_git_projects(workspace_path, true)
-  end)
+  end, 100)
 end
 
 function M.open_workspace_popup(workspace, opts)
