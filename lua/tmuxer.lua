@@ -144,17 +144,25 @@ local function find_git_projects(workspace_path)
   -- For archive: search deeper (no depth limit) but exclude by default
   local archive_exclude = M.config.show_archive and "" or (has_fd and "--exclude archive" or "! -path '*/archive/*'")
 
-  -- Find git directories (always)
-  local found_paths = {}
+  -- Find git directories
+  local raw_paths
   if has_fd then
     local fd_cmd = archive_exclude ~= ""
-      and string.format("fd -H -t d '^.git$' %s . %s -x echo {//}", archive_exclude, escaped_path)
-      or string.format("fd -H -t d '^.git$' . %s -x echo {//}", escaped_path)
-    found_paths = vim.fn.systemlist(fd_cmd)
+      and string.format("fd -H -t d '^.git$' %s . %s", archive_exclude, escaped_path)
+      or string.format("fd -H -t d '^.git$' . %s", escaped_path)
+    raw_paths = vim.fn.systemlist(fd_cmd)
   else
-    local find_cmd = string.format("find %s -type d -name .git -prune %s -exec dirname {} \\;",
-      escaped_path, archive_exclude)
-    found_paths = vim.fn.systemlist(find_cmd)
+    local find_cmd = string.format("find %s -type d -name .git %s", escaped_path, archive_exclude)
+    raw_paths = vim.fn.systemlist(find_cmd)
+  end
+
+  -- Strip /.git suffix in Lua (faster than -x echo)
+  local found_paths = {}
+  for _, p in ipairs(raw_paths) do
+    local project = p:gsub("/.git/?$", "")
+    if project ~= "" then
+      found_paths[#found_paths + 1] = project
+    end
   end
 
   local results = {}
@@ -427,9 +435,12 @@ function M.setup(opts)
   vim.api.nvim_create_user_command("TmuxToggleArchive", function()
     M.config.show_archive = not M.config.show_archive
     local status = M.config.show_archive and "visible" or "hidden"
-    vim.cmd("redraw")
-    vim.cmd("echon 'Archive: " .. status .. "'")
-    vim.defer_fn(function() vim.cmd("echo ''") end, 1500)
+    vim.schedule(function()
+      vim.api.nvim_echo({{"Archive: " .. status}}, false, {})
+      vim.defer_fn(function()
+        vim.api.nvim_echo({{" "}}, false, {})
+      end, 1500)
+    end)
   end, {})
 end
 
