@@ -20,6 +20,14 @@ Kill tmux sessions without leaving Neovim
 
 Smart project sorting by parent directories
 
+Neovim 0.7.0 or higher
+
+Tmux running (plugin checks for $TMUX environment variable)
+
+Telescope.nvim
+
+Fd command (optional, falls back to find if not available)
+
 ## Usage
 
 To configure the plugin with [lazy.nvim](https://github.com/folke/lazy.nvim), use the following setup:
