@@ -7,128 +7,90 @@ local actions = require('telescope.actions')
 local action_state = require('telescope.actions.state')
 local entry_display = require('telescope.pickers.entry_display')
 
+local project_cache = { with_archive = nil, without_archive = nil }
+local has_fd = vim.fn.executable('fd') == 1
 
--- Default configuration
 M.config = {
   nvim_alias = "nvim",
-  layout_config = {
-    height = 15,
-    width = 80,
-  },
+  layout_config = { height = 15, width = 80 },
   theme = nil,
   previewer = true,
   border = true,
-  max_depth = 2,
   parent_highlight = { fg = "#9E8069", bold = false },
+  show_archive = false,
+  max_depth = 2,
 }
 
--- Helper function to apply telescope theme if available
 local function apply_theme(opts)
   opts = opts or {}
-  if not opts.theme and not M.config.theme then
-    return {
-      layout_config = vim.tbl_deep_extend("force", M.config.layout_config, (opts.layout_config or {})),
-      previewer = opts.previewer ~= nil and opts.previewer or M.config.previewer,
-      border = opts.border ~= nil and opts.border or M.config.border,
-    }
-  end
-
-  local status, themes = pcall(require, 'telescope.themes')
-  if not status then
-    return {
-      layout_config = vim.tbl_deep_extend("force", M.config.layout_config, (opts.layout_config or {})),
-      border = opts.border ~= nil and opts.border or M.config.border,
-    }
-  end
-
-  local theme_name = opts.theme or M.config.theme
-  local theme_opts = {
-    layout_config = vim.tbl_deep_extend("force", M.config.layout_config, (opts.layout_config or {})),
+  local base = {
+    layout_config = vim.tbl_deep_extend("force", M.config.layout_config, opts.layout_config or {}),
     previewer = opts.previewer ~= nil and opts.previewer or M.config.previewer,
     border = opts.border ~= nil and opts.border or M.config.border,
   }
 
+  local theme_name = opts.theme or M.config.theme
+  if not theme_name then return base end
+
+  local ok, themes = pcall(require, 'telescope.themes')
+  if not ok then return base end
+
   if theme_name == "dropdown" then
-    return themes.get_dropdown(theme_opts)
+    return themes.get_dropdown(base)
   elseif theme_name == "cursor" then
-    return themes.get_cursor(theme_opts)
+    return themes.get_cursor(base)
   elseif theme_name == "ivy" then
-    return themes.get_ivy(theme_opts)
-  else
-    return theme_opts
+    return themes.get_ivy(base)
   end
+  return base
 end
 
 local function is_tmux_running()
   return vim.fn.exists('$TMUX') == 1
 end
 
-local function build_tmux_new_session_cmd(session_name, project_path)
-  local cmd = { "tmux", "new-session", "-ds", session_name, "-c", project_path }
-  local alias = M.config.nvim_alias or "nvim"
-
-  if type(alias) == "table" then
-    for _, part in ipairs(alias) do
-      table.insert(cmd, part)
-    end
-  else
-    -- Use user's default shell instead of sh
-    local shell = vim.env.SHELL or "/bin/zsh"
-    table.insert(cmd, shell)
-    table.insert(cmd, "-lc")
-    table.insert(cmd, alias)
-  end
-
-  return cmd
-end
-
 local function switch_tmux_session(session_name, callback)
   vim.fn.jobstart({ "tmux", "switch-client", "-t", session_name }, {
-    on_exit = function(_, _) if callback then callback() end end
+    on_exit = function() if callback then callback() end end
   })
 end
 
 local function get_tmux_session_name_set()
   local sessions = {}
-  local output = vim.fn.systemlist("tmux list-sessions -F '#{session_name}'")
-
-  for _, name in ipairs(output) do
+  for _, name in ipairs(vim.fn.systemlist("tmux list-sessions -F '#{session_name}'")) do
     if name ~= "" then sessions[name] = true end
   end
-
   return sessions
 end
 
 local function create_tmux_session_with_nvim(session_name, project_path, existing_sessions, callback)
   if existing_sessions and existing_sessions[session_name] then
-    switch_tmux_session(session_name, function()
-      if callback then callback() end
-    end)
+    switch_tmux_session(session_name, callback)
     return
   end
 
-  vim.fn.jobstart(build_tmux_new_session_cmd(session_name, project_path), {
+  local cmd = { "tmux", "new-session", "-ds", session_name, "-c", project_path }
+  local alias = M.config.nvim_alias or "nvim"
+
+  if type(alias) == "table" then
+    for _, part in ipairs(alias) do cmd[#cmd + 1] = part end
+  else
+    cmd[#cmd + 1] = vim.env.SHELL or "/bin/zsh"
+    cmd[#cmd + 1] = "-lc"
+    cmd[#cmd + 1] = alias
+  end
+
+  vim.fn.jobstart(cmd, {
     on_exit = function(_, code)
       if code == 0 then
         if existing_sessions then existing_sessions[session_name] = true end
         if callback then callback() end
         return
       end
-
-      local session_known = existing_sessions and existing_sessions[session_name]
-
-      if not session_known then
-        local refreshed = get_tmux_session_name_set()
-        if refreshed[session_name] then
-          session_known = true
-          if existing_sessions then existing_sessions[session_name] = true end
-        end
-      end
-
-      if session_known then
-        switch_tmux_session(session_name, function()
-          if callback then callback() end
-        end)
+      local refreshed = get_tmux_session_name_set()
+      if refreshed[session_name] then
+        if existing_sessions then existing_sessions[session_name] = true end
+        switch_tmux_session(session_name, callback)
       elseif callback then
         callback()
       end
@@ -136,37 +98,45 @@ local function create_tmux_session_with_nvim(session_name, project_path, existin
   })
 end
 
-local function find_git_projects(workspace_path, max_depth)
-  local has_fd = vim.fn.executable('fd') == 1
-  local expanded_path = vim.fn.expand(workspace_path)
-  local escaped_path = vim.fn.shellescape(expanded_path)
-  local cmd = has_fd and string.format(
-    "fd -H -t d '^.git$' %s -d %d --exclude 'archive' -x echo {//}",
-    escaped_path,
-    max_depth + 1
-  ) or string.format(
-    "find %s -maxdepth %d -type d -name .git -prune ! -path '*/archive/*' -exec dirname {} \\;",
-    escaped_path,
-    max_depth + 1
-  )
+local function find_git_projects(workspace_path, include_archive)
+  local cache_key = include_archive and "with_archive" or "without_archive"
+  if project_cache[cache_key] then
+    return project_cache[cache_key]
+  end
 
-  local found_paths = vim.fn.systemlist(cmd)
+  local expanded = vim.fn.expand(workspace_path)
+  local escaped = vim.fn.shellescape(expanded)
+  local depth = M.config.max_depth + 1
+  local archive_depth = M.config.max_depth + 3  -- archive has extra nesting
+
+  local cmd
+  if has_fd then
+    cmd = include_archive
+        and string.format("fd -H -t d '^.git$' -d %d . %s -x echo {//}", archive_depth, escaped)
+        or string.format("fd -H -t d '^.git$' -d %d --exclude archive . %s -x echo {//}", depth, escaped)
+  else
+    cmd = include_archive
+        and string.format("find %s -maxdepth %d -type d -name .git -exec dirname {} \\;", escaped, archive_depth)
+        or string.format("find %s -maxdepth %d -type d -name .git ! -path '*/archive/*' -exec dirname {} \\;", escaped, depth)
+  end
+
+  local raw = vim.fn.systemlist(cmd)
   local results = {}
-  local path_sep = package.config:sub(1, 1)
-  local parent_pattern = "([^" .. path_sep .. "]+)" .. path_sep .. "[^" .. path_sep .. "]+$"
-  local name_pattern = "[^" .. path_sep .. "]+$"
 
-  for _, project_path in ipairs(found_paths) do
-    local project_name = project_path:match(name_pattern)
-    local parent_dir = project_path:match(parent_pattern)
-    if project_name and parent_dir then
-      table.insert(results, {
-        name = project_name,
-        path = project_path,
-        parent = parent_dir,
-        lower_name = project_name:lower(),
-        lower_parent = parent_dir:lower()
-      })
+  for i = 1, #raw do
+    local project_path = raw[i]
+    if project_path ~= "" then
+      local name = project_path:match("[^/]+$")
+      local parent = project_path:match("([^/]+)/[^/]+$")
+      if name and parent then
+        results[#results + 1] = {
+          name = name,
+          path = project_path,
+          parent = parent,
+          lower_name = name:lower(),
+          lower_parent = parent:lower(),
+        }
+      end
     end
   end
 
@@ -177,7 +147,17 @@ local function find_git_projects(workspace_path, max_depth)
     return a.lower_parent < b.lower_parent
   end)
 
+  project_cache[cache_key] = results
   return results
+end
+
+local function preload_cache(workspace_path)
+  -- Preload non-archive immediately (fast)
+  find_git_projects(workspace_path, false)
+  -- Preload archive in background (slower, deeper search)
+  vim.defer_fn(function()
+    find_git_projects(workspace_path, true)
+  end, 100)
 end
 
 function M.open_workspace_popup(workspace, opts)
@@ -186,16 +166,13 @@ function M.open_workspace_popup(workspace, opts)
     return
   end
 
-  local projects = find_git_projects(workspace.path, M.config.max_depth)
+  local projects = find_git_projects(workspace.path, M.config.show_archive)
   local picker_opts = apply_theme(opts)
   local existing_sessions = get_tmux_session_name_set()
 
   local displayer = entry_display.create {
     separator = "/",
-    items = {
-      { width = nil }, -- Project name
-      { width = nil }, -- Parent directory
-    },
+    items = { { width = nil }, { width = nil } },
   }
 
   pickers.new(picker_opts, {
@@ -207,8 +184,8 @@ function M.open_workspace_popup(workspace, opts)
           value = entry,
           display = function()
             return displayer {
-              entry.name,                         -- Default highlight
-              { entry.parent, "TmuxerParentDir" } -- Custom highlight
+              entry.name,
+              { entry.parent, "TmuxerParentDir" }
             }
           end,
           ordinal = entry.name .. " " .. entry.parent,
@@ -223,20 +200,19 @@ function M.open_workspace_popup(workspace, opts)
         actions.close(prompt_bufnr)
 
         if #selections > 0 then
-          local completed = 0
-          local total = #selections
+          local completed, total = 0, #selections
           for _, selection in ipairs(selections) do
             local project = selection.value
-            local session_name = string.lower(project.name):gsub("[^%w_]", "_")
+            local session_name = project.name:lower():gsub("[^%w_]", "_")
             create_tmux_session_with_nvim(session_name, project.path, existing_sessions, function()
               completed = completed + 1
-              vim.notify(string.format("Created session (%d/%d): %s", completed, total, session_name), vim.log.levels.INFO)
+              vim.notify(string.format("Created session (%d/%d): %s", completed, total, session_name),
+                vim.log.levels.INFO)
             end)
           end
         else
-          local selection = action_state.get_selected_entry()
-          local project = selection.value
-          local session_name = string.lower(project.name):gsub("[^%w_]", "_")
+          local project = action_state.get_selected_entry().value
+          local session_name = project.name:lower():gsub("[^%w_]", "_")
           create_tmux_session_with_nvim(session_name, project.path, existing_sessions, function()
             switch_tmux_session(session_name)
           end)
@@ -247,40 +223,21 @@ function M.open_workspace_popup(workspace, opts)
   }):find()
 end
 
--- Updated to include directory information
 local function get_non_current_tmux_sessions()
-  -- Get session name and working directory path
-  local sessions_output = vim.fn.systemlist(
-    'tmux list-sessions -F "#{?session_attached,1,0} #{session_name} #{session_path}"')
+  local output = vim.fn.systemlist('tmux list-sessions -F "#{?session_attached,1,0} #{session_name} #{session_path}"')
   local sessions = {}
 
-  for _, line in ipairs(sessions_output) do
-    -- Parse: "0|1 session_name /path/to/dir"
-    -- Use non-greedy match for session name (no spaces allowed in tmux session names by default)
+  for _, line in ipairs(output) do
     local is_current, name, path = line:match("^(%d)%s+(%S+)%s+(.+)$")
     if name and path and is_current == "0" then
-      local path_sep = package.config:sub(1, 1)
-      local parent_pattern = "([^" .. path_sep .. "]+)" .. path_sep .. "[^" .. path_sep .. "]+$"
-      local name_pattern = "[^" .. path_sep .. "]+$"
-
-      -- Extract project name and parent directory from path
-      local project_name = path:match(name_pattern) or ""
-      local parent_dir = path:match(parent_pattern) or ""
-
-      table.insert(sessions, {
-        name = name,
-        path = path,
-        project_name = project_name,
-        parent = parent_dir,
-      })
+      local project_name = path:match("[^/]+$") or ""
+      local parent = path:match("([^/]+)/[^/]+$") or ""
+      sessions[#sessions + 1] = { name = name, path = path, project_name = project_name, parent = parent }
     end
   end
 
-  -- Sort sessions by parent directory then name
   table.sort(sessions, function(a, b)
-    if a.parent == b.parent then
-      return a.name < b.name
-    end
+    if a.parent == b.parent then return a.name < b.name end
     return a.parent < b.parent
   end)
 
@@ -298,10 +255,7 @@ function M.tmux_sessions(opts)
 
   local displayer = entry_display.create {
     separator = "/",
-    items = {
-      { width = nil }, -- Session name
-      { width = nil }, -- Parent directory
-    },
+    items = { { width = nil }, { width = nil } },
   }
 
   pickers.new(picker_opts, {
@@ -312,10 +266,7 @@ function M.tmux_sessions(opts)
         return {
           value = entry,
           display = function()
-            return displayer {
-              entry.name,                         -- Session name (default highlight)
-              { entry.parent, "TmuxerParentDir" } -- Parent directory (custom highlight)
-            }
+            return displayer { entry.name, { entry.parent, "TmuxerParentDir" } }
           end,
           ordinal = entry.name .. " " .. entry.parent,
         }
@@ -325,55 +276,46 @@ function M.tmux_sessions(opts)
     attach_mappings = function(prompt_bufnr, map)
       actions.select_default:replace(function()
         actions.close(prompt_bufnr)
-        local selection = action_state.get_selected_entry()
-        switch_tmux_session(selection.value.name)
+        switch_tmux_session(action_state.get_selected_entry().value.name)
       end)
 
       map("i", "<C-d>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
         local selections = picker:get_multi_selection()
-        local sessions_to_kill = {}
+        local to_kill = {}
 
         if #selections > 0 then
-          for _, sel in ipairs(selections) do
-            table.insert(sessions_to_kill, sel.value.name)
-          end
+          for _, sel in ipairs(selections) do to_kill[#to_kill + 1] = sel.value.name end
         else
-          local selection = action_state.get_selected_entry()
-          if not selection then return end
-          table.insert(sessions_to_kill, selection.value.name)
+          local sel = action_state.get_selected_entry()
+          if sel then to_kill[#to_kill + 1] = sel.value.name end
         end
 
-        for _, session in ipairs(sessions_to_kill) do
+        for _, session in ipairs(to_kill) do
           vim.fn.jobstart({ "tmux", "kill-session", "-t", session }, {
             on_exit = function()
-              if vim.api.nvim_buf_is_valid(prompt_bufnr) then
-                local new_sessions = get_non_current_tmux_sessions()
-                if #new_sessions == 0 then
-                  vim.schedule(function() actions.close(prompt_bufnr) end)
-                  return
-                end
-                local new_finder = finders.new_table({
-                  results = new_sessions,
-                  entry_maker = function(entry)
-                    return {
-                      value = entry,
-                      display = function()
-                        return displayer {
-                          entry.name,
-                          { entry.parent, "TmuxerParentDir" }
-                        }
-                      end,
-                      ordinal = entry.name .. " " .. entry.parent,
-                    }
-                  end
-                })
-                vim.schedule(function()
-                  if vim.api.nvim_buf_is_valid(prompt_bufnr) then
-                    picker:refresh(new_finder, { reset_prompt = true, new_prefix = picker.prompt_prefix })
-                  end
-                end)
+              if not vim.api.nvim_buf_is_valid(prompt_bufnr) then return end
+              local new_sessions = get_non_current_tmux_sessions()
+              if #new_sessions == 0 then
+                vim.schedule(function() actions.close(prompt_bufnr) end)
+                return
               end
+              vim.schedule(function()
+                if vim.api.nvim_buf_is_valid(prompt_bufnr) then
+                  picker:refresh(finders.new_table({
+                    results = new_sessions,
+                    entry_maker = function(entry)
+                      return {
+                        value = entry,
+                        display = function()
+                          return displayer { entry.name, { entry.parent, "TmuxerParentDir" } }
+                        end,
+                        ordinal = entry.name .. " " .. entry.parent,
+                      }
+                    end
+                  }), { reset_prompt = true })
+                end
+              end)
             end
           })
         end
@@ -386,29 +328,31 @@ end
 function M.setup(opts)
   opts = opts or {}
   M.config = vim.tbl_deep_extend("force", M.config, opts)
-
   M.workspaces = opts.workspaces or {}
 
-  -- Set up parent directory highlight
   vim.api.nvim_set_hl(0, "TmuxerParentDir", M.config.parent_highlight)
 
-  vim.api.nvim_create_user_command("WorkspaceOpen", function()
+  if #M.workspaces > 0 then
+    preload_cache(M.workspaces[1].path)
+  end
+
+  vim.api.nvim_create_user_command("TmuxCreateSession", function()
     if #M.workspaces == 1 then
       M.open_workspace_popup(M.workspaces[1])
     else
-      local picker_opts = apply_theme()
-      pickers.new(picker_opts, {
+      pickers.new(apply_theme(), {
         prompt_title = "Select Workspace",
         finder = finders.new_table {
           results = M.workspaces,
-          entry_maker = function(entry) return { value = entry, display = entry.name, ordinal = entry.name } end
+          entry_maker = function(entry)
+            return { value = entry, display = entry.name, ordinal = entry.name }
+          end
         },
         sorter = conf.generic_sorter({}),
         attach_mappings = function(prompt_bufnr)
           actions.select_default:replace(function()
             actions.close(prompt_bufnr)
-            local selection = action_state.get_selected_entry()
-            M.open_workspace_popup(selection.value)
+            M.open_workspace_popup(action_state.get_selected_entry().value)
           end)
           return true
         end,
@@ -416,7 +360,11 @@ function M.setup(opts)
     end
   end, {})
 
-  vim.api.nvim_create_user_command("TmuxSessions", M.tmux_sessions, {})
+  vim.api.nvim_create_user_command("TmuxSwitchSession", M.tmux_sessions, {})
+
+  vim.api.nvim_create_user_command("TmuxToggleArchive", function()
+    M.config.show_archive = not M.config.show_archive
+  end, {})
 end
 
 return M
