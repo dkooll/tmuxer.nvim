@@ -143,31 +143,48 @@ local function find_git_projects(workspace_path, max_depth)
   local expanded_path = vim.fn.expand(workspace_path)
   local escaped_path = vim.fn.shellescape(expanded_path)
 
+  -- For archive: search deeper (no depth limit) but exclude by default
   local archive_exclude = M.config.show_archive and "" or (has_fd and "--exclude archive" or "! -path '*/archive/*'")
 
-  local found_paths
+  -- Find git directories (always)
+  local found_paths = {}
+  if has_fd then
+    local fd_cmd = archive_exclude ~= ""
+      and string.format("fd -H -t d '^.git$' %s . %s -x echo {//}", archive_exclude, escaped_path)
+      or string.format("fd -H -t d '^.git$' . %s -x echo {//}", escaped_path)
+    found_paths = vim.fn.systemlist(fd_cmd)
+  else
+    local find_cmd = string.format("find %s -type d -name .git -prune %s -exec dirname {} \\;",
+      escaped_path, archive_exclude)
+    found_paths = vim.fn.systemlist(find_cmd)
+  end
+
+  -- If show_non_git is enabled, also find directories without .git at max_depth
   if M.config.show_non_git then
-    -- Show all directories (including non-git) at exactly max_depth
+    local non_git_paths
     if has_fd then
       local fd_cmd = archive_exclude ~= ""
         and string.format("fd -H -t d --min-depth %d --max-depth %d %s . %s", max_depth, max_depth, archive_exclude, escaped_path)
         or string.format("fd -H -t d --min-depth %d --max-depth %d . %s", max_depth, max_depth, escaped_path)
-      found_paths = vim.fn.systemlist(fd_cmd)
+      non_git_paths = vim.fn.systemlist(fd_cmd)
     else
       local find_cmd = string.format("find %s -mindepth %d -maxdepth %d -type d %s", escaped_path, max_depth, max_depth, archive_exclude)
-      found_paths = vim.fn.systemlist(find_cmd)
+      non_git_paths = vim.fn.systemlist(find_cmd)
     end
-  else
-    -- Show only git directories
-    if has_fd then
-      local fd_cmd = archive_exclude ~= ""
-        and string.format("fd -H -t d '^.git$' -d %d %s . %s -x echo {//}", max_depth + 1, archive_exclude, escaped_path)
-        or string.format("fd -H -t d '^.git$' -d %d . %s -x echo {//}", max_depth + 1, escaped_path)
-      found_paths = vim.fn.systemlist(fd_cmd)
-    else
-      local find_cmd = string.format("find %s -maxdepth %d -type d -name .git -prune %s -exec dirname {} \\;",
-        escaped_path, max_depth + 1, archive_exclude)
-      found_paths = vim.fn.systemlist(find_cmd)
+
+    -- Add non-git dirs that aren't already in found_paths (no .git inside)
+    local git_set = {}
+    for _, p in ipairs(found_paths) do
+      git_set[p] = true
+    end
+    for _, p in ipairs(non_git_paths) do
+      if not git_set[p] then
+        -- Check this dir doesn't have .git
+        local git_check = p .. "/.git"
+        if vim.fn.isdirectory(git_check) == 0 then
+          table.insert(found_paths, p)
+        end
+      end
     end
   end
   local results = {}
@@ -439,18 +456,16 @@ function M.setup(opts)
 
   vim.api.nvim_create_user_command("TmuxToggleArchive", function()
     M.config.show_archive = not M.config.show_archive
-    vim.schedule(function()
-      local status = M.config.show_archive and "visible" or "hidden"
-      vim.api.nvim_echo({{string.format("Archive: %s", status), "Normal"}}, false, {})
-    end)
+    local status = M.config.show_archive and "visible" or "hidden"
+    vim.api.nvim_echo({{"Archive: " .. status, "Normal"}}, false, {})
+    vim.defer_fn(function() vim.api.nvim_echo({{"", ""}}, false, {}) end, 1500)
   end, {})
 
   vim.api.nvim_create_user_command("TmuxToggleNonGit", function()
     M.config.show_non_git = not M.config.show_non_git
-    vim.schedule(function()
-      local status = M.config.show_non_git and "all dirs" or "git only"
-      vim.api.nvim_echo({{string.format("Showing: %s", status), "Normal"}}, false, {})
-    end)
+    local status = M.config.show_non_git and "all dirs" or "git only"
+    vim.api.nvim_echo({{"Showing: " .. status, "Normal"}}, false, {})
+    vim.defer_fn(function() vim.api.nvim_echo({{"", ""}}, false, {}) end, 1500)
   end, {})
 end
 
