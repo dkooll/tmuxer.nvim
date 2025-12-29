@@ -7,8 +7,6 @@ local actions = require('telescope.actions')
 local action_state = require('telescope.actions.state')
 local entry_display = require('telescope.pickers.entry_display')
 
--- Column width cache for performance
-local cached_column_width
 
 -- Default configuration
 M.config = {
@@ -59,12 +57,6 @@ local function apply_theme(opts)
   else
     return theme_opts
   end
-end
-
-local function update_column_width()
-  local display_width = vim.o.columns - 4
-  cached_column_width = math.max(1, math.min(math.floor((display_width - 20) / 2), 50))
-  return cached_column_width
 end
 
 local function is_tmux_running()
@@ -179,7 +171,10 @@ local function find_git_projects(workspace_path, max_depth)
   end
 
   table.sort(results, function(a, b)
-    return a.lower_parent == b.lower_parent and a.lower_name < b.lower_name or a.lower_parent < b.lower_parent
+    if a.lower_parent == b.lower_parent then
+      return a.lower_name < b.lower_name
+    end
+    return a.lower_parent < b.lower_parent
   end)
 
   return results
@@ -187,7 +182,7 @@ end
 
 function M.open_workspace_popup(workspace, opts)
   if not is_tmux_running() then
-    print("Not in a tmux session")
+    vim.notify("Not in a tmux session", vim.log.levels.WARN)
     return
   end
 
@@ -235,7 +230,7 @@ function M.open_workspace_popup(workspace, opts)
             local session_name = string.lower(project.name):gsub("[^%w_]", "_")
             create_tmux_session_with_nvim(session_name, project.path, existing_sessions, function()
               completed = completed + 1
-              print(string.format("Created tmux session with nvim (%d/%d): %s", completed, total, session_name))
+              vim.notify(string.format("Created session (%d/%d): %s", completed, total, session_name), vim.log.levels.INFO)
             end)
           end
         else
@@ -243,9 +238,7 @@ function M.open_workspace_popup(workspace, opts)
           local project = selection.value
           local session_name = string.lower(project.name):gsub("[^%w_]", "_")
           create_tmux_session_with_nvim(session_name, project.path, existing_sessions, function()
-            switch_tmux_session(session_name, function()
-              print("Created and switched to session: " .. session_name .. " with " .. M.config.nvim_alias)
-            end)
+            switch_tmux_session(session_name)
           end)
         end
       end)
@@ -262,7 +255,9 @@ local function get_non_current_tmux_sessions()
   local sessions = {}
 
   for _, line in ipairs(sessions_output) do
-    local is_current, name, path = line:match("^(%d)%s+(.+)%s+(.+)$")
+    -- Parse: "0|1 session_name /path/to/dir"
+    -- Use non-greedy match for session name (no spaces allowed in tmux session names by default)
+    local is_current, name, path = line:match("^(%d)%s+(%S+)%s+(.+)$")
     if name and path and is_current == "0" then
       local path_sep = package.config:sub(1, 1)
       local parent_pattern = "([^" .. path_sep .. "]+)" .. path_sep .. "[^" .. path_sep .. "]+$"
@@ -283,7 +278,10 @@ local function get_non_current_tmux_sessions()
 
   -- Sort sessions by parent directory then name
   table.sort(sessions, function(a, b)
-    return a.parent == b.parent and a.name < b.name or a.parent < b.parent
+    if a.parent == b.parent then
+      return a.name < b.name
+    end
+    return a.parent < b.parent
   end)
 
   return sessions
@@ -291,7 +289,7 @@ end
 
 function M.tmux_sessions(opts)
   if not is_tmux_running() then
-    print("Not in a tmux session")
+    vim.notify("Not in a tmux session", vim.log.levels.WARN)
     return
   end
 
@@ -388,16 +386,31 @@ end
 function M.setup(opts)
   opts = opts or {}
   M.config = vim.tbl_deep_extend("force", M.config, opts)
-  M.workspaces = opts.workspaces or {}
+
+  -- Validate workspaces configuration
+  if opts.workspaces then
+    if type(opts.workspaces) ~= "table" then
+      vim.notify("tmuxer: 'workspaces' must be a table", vim.log.levels.ERROR)
+      return
+    end
+    M.workspaces = {}
+    for i, ws in ipairs(opts.workspaces) do
+      if type(ws) ~= "table" or not ws.name or not ws.path then
+        vim.notify(string.format("tmuxer: workspace[%d] must have 'name' and 'path'", i), vim.log.levels.ERROR)
+      else
+        local expanded_path = vim.fn.expand(ws.path)
+        if vim.fn.isdirectory(expanded_path) == 0 then
+          vim.notify(string.format("tmuxer: workspace '%s' path does not exist: %s", ws.name, ws.path), vim.log.levels.WARN)
+        end
+        table.insert(M.workspaces, ws)
+      end
+    end
+  else
+    M.workspaces = {}
+  end
 
   -- Set up parent directory highlight
   vim.api.nvim_set_hl(0, "TmuxerParentDir", M.config.parent_highlight)
-
-  update_column_width()
-  vim.api.nvim_create_autocmd("VimResized", {
-    group = vim.api.nvim_create_augroup("TmuxerResize", { clear = true }),
-    callback = update_column_width,
-  })
 
   vim.api.nvim_create_user_command("WorkspaceOpen", function()
     if #M.workspaces == 1 then
