@@ -147,7 +147,7 @@ local function find_git_projects(workspace_path, max_depth)
 
   local found_paths
   if M.config.show_non_git then
-    -- Show all directories (including non-git)
+    -- Show all directories (including non-git) at exactly max_depth
     local cmd = has_fd and string.format(
       "fd -H -t d --min-depth %d --max-depth %d %s . %s",
       max_depth,
@@ -446,10 +446,14 @@ function M.setup(opts)
 
   vim.api.nvim_create_user_command("TmuxToggleArchive", function()
     M.config.show_archive = not M.config.show_archive
+    local status = M.config.show_archive and "visible" or "hidden"
+    vim.notify("Archive: " .. status, vim.log.levels.INFO)
   end, {})
 
   vim.api.nvim_create_user_command("TmuxToggleNonGit", function()
     M.config.show_non_git = not M.config.show_non_git
+    local status = M.config.show_non_git and "all dirs" or "git only"
+    vim.notify("Showing: " .. status, vim.log.levels.INFO)
   end, {})
 end
 
