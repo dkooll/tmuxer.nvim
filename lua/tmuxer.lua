@@ -363,8 +363,12 @@ function M.setup(opts)
   vim.api.nvim_create_user_command("TmuxToggleArchive", function()
     M.config.show_archive = not M.config.show_archive
     local status = M.config.show_archive and "visible" or "hidden"
+    vim.cmd("redraw")
     vim.api.nvim_echo({{"Archive: " .. status}}, false, {})
-    vim.defer_fn(function() vim.cmd("normal! :") end, 1500)
+    vim.defer_fn(function()
+      vim.cmd("redraw")
+      vim.api.nvim_echo({{" "}}, false, {})
+    end, 1500)
   end, {})
 end
 
