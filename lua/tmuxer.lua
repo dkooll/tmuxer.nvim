@@ -175,13 +175,13 @@ local function find_git_projects(workspace_path, max_depth)
     -- Add non-git dirs that aren't already in found_paths (no .git inside)
     local git_set = {}
     for _, p in ipairs(found_paths) do
-      git_set[p] = true
+      git_set[p:gsub("/$", "")] = true
     end
-    for _, p in ipairs(non_git_paths) do
+    for _, path in ipairs(non_git_paths) do
+      local p = path:gsub("/$", "")  -- strip trailing slash
       if not git_set[p] then
         -- Check this dir doesn't have .git
-        local git_check = p .. "/.git"
-        if vim.fn.isdirectory(git_check) == 0 then
+        if vim.fn.isdirectory(p .. "/.git") == 0 then
           table.insert(found_paths, p)
         end
       end
@@ -457,15 +457,15 @@ function M.setup(opts)
   vim.api.nvim_create_user_command("TmuxToggleArchive", function()
     M.config.show_archive = not M.config.show_archive
     local status = M.config.show_archive and "visible" or "hidden"
-    vim.api.nvim_echo({{"Archive: " .. status, "Normal"}}, false, {})
-    vim.defer_fn(function() vim.api.nvim_echo({{"", ""}}, false, {}) end, 1500)
+    print("Archive: " .. status)
+    vim.defer_fn(function() vim.cmd("echo ''") end, 1500)
   end, {})
 
   vim.api.nvim_create_user_command("TmuxToggleNonGit", function()
     M.config.show_non_git = not M.config.show_non_git
     local status = M.config.show_non_git and "all dirs" or "git only"
-    vim.api.nvim_echo({{"Showing: " .. status, "Normal"}}, false, {})
-    vim.defer_fn(function() vim.api.nvim_echo({{"", ""}}, false, {}) end, 1500)
+    print("Showing: " .. status)
+    vim.defer_fn(function() vim.cmd("echo ''") end, 1500)
   end, {})
 end
 
