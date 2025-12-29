@@ -21,7 +21,6 @@ M.config = {
   max_depth = 2,
   parent_highlight = { fg = "#9E8069", bold = false },
   show_archive = false,
-  show_non_git = false,
 }
 
 -- Helper function to apply telescope theme if available
@@ -138,7 +137,7 @@ local function create_tmux_session_with_nvim(session_name, project_path, existin
   })
 end
 
-local function find_git_projects(workspace_path, max_depth)
+local function find_git_projects(workspace_path)
   local has_fd = vim.fn.executable('fd') == 1
   local expanded_path = vim.fn.expand(workspace_path)
   local escaped_path = vim.fn.shellescape(expanded_path)
@@ -159,34 +158,6 @@ local function find_git_projects(workspace_path, max_depth)
     found_paths = vim.fn.systemlist(find_cmd)
   end
 
-  -- If show_non_git is enabled, also find directories without .git at max_depth
-  if M.config.show_non_git then
-    local non_git_paths
-    if has_fd then
-      local fd_cmd = archive_exclude ~= ""
-        and string.format("fd -H -t d --min-depth %d --max-depth %d %s . %s", max_depth, max_depth, archive_exclude, escaped_path)
-        or string.format("fd -H -t d --min-depth %d --max-depth %d . %s", max_depth, max_depth, escaped_path)
-      non_git_paths = vim.fn.systemlist(fd_cmd)
-    else
-      local find_cmd = string.format("find %s -mindepth %d -maxdepth %d -type d %s", escaped_path, max_depth, max_depth, archive_exclude)
-      non_git_paths = vim.fn.systemlist(find_cmd)
-    end
-
-    -- Add non-git dirs that aren't already in found_paths (no .git inside)
-    local git_set = {}
-    for _, p in ipairs(found_paths) do
-      git_set[p:gsub("/$", "")] = true
-    end
-    for _, path in ipairs(non_git_paths) do
-      local p = path:gsub("/$", "")  -- strip trailing slash
-      if not git_set[p] then
-        -- Check this dir doesn't have .git
-        if vim.fn.isdirectory(p .. "/.git") == 0 then
-          table.insert(found_paths, p)
-        end
-      end
-    end
-  end
   local results = {}
   local path_sep = package.config:sub(1, 1)
   local parent_pattern = "([^" .. path_sep .. "]+)" .. path_sep .. "[^" .. path_sep .. "]+$"
@@ -222,7 +193,7 @@ function M.open_workspace_popup(workspace, opts)
     return
   end
 
-  local projects = find_git_projects(workspace.path, M.config.max_depth)
+  local projects = find_git_projects(workspace.path)
   local picker_opts = apply_theme(opts)
   local existing_sessions = get_tmux_session_name_set()
 
@@ -457,14 +428,8 @@ function M.setup(opts)
   vim.api.nvim_create_user_command("TmuxToggleArchive", function()
     M.config.show_archive = not M.config.show_archive
     local status = M.config.show_archive and "visible" or "hidden"
-    print("Archive: " .. status)
-    vim.defer_fn(function() vim.cmd("echo ''") end, 1500)
-  end, {})
-
-  vim.api.nvim_create_user_command("TmuxToggleNonGit", function()
-    M.config.show_non_git = not M.config.show_non_git
-    local status = M.config.show_non_git and "all dirs" or "git only"
-    print("Showing: " .. status)
+    vim.cmd("redraw")
+    vim.cmd("echon 'Archive: " .. status .. "'")
     vim.defer_fn(function() vim.cmd("echo ''") end, 1500)
   end, {})
 end
