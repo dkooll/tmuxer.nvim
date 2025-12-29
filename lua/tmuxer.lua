@@ -242,7 +242,7 @@ function M.open_workspace_popup(workspace, opts)
       end
     },
     sorter = conf.generic_sorter({}),
-    attach_mappings = function(prompt_bufnr, map)
+    attach_mappings = function(prompt_bufnr)
       actions.select_default:replace(function()
         local picker = action_state.get_current_picker(prompt_bufnr)
         local selections = picker:get_multi_selection()
@@ -268,51 +268,6 @@ function M.open_workspace_popup(workspace, opts)
           end)
         end
       end)
-
-      -- Toggle archive directories
-      map("i", "<C-a>", function()
-        M.config.show_archive = not M.config.show_archive
-        local new_projects = find_git_projects(workspace.path, M.config.max_depth)
-        local current_picker = action_state.get_current_picker(prompt_bufnr)
-        current_picker:refresh(finders.new_table {
-          results = new_projects,
-          entry_maker = function(entry)
-            return {
-              value = entry,
-              display = function()
-                return displayer {
-                  entry.name,
-                  { entry.parent, "TmuxerParentDir" }
-                }
-              end,
-              ordinal = entry.name .. " " .. entry.parent,
-            }
-          end
-        }, { reset_prompt = true })
-      end)
-
-      -- Toggle non-git directories
-      map("i", "<C-g>", function()
-        M.config.show_non_git = not M.config.show_non_git
-        local new_projects = find_git_projects(workspace.path, M.config.max_depth)
-        local current_picker = action_state.get_current_picker(prompt_bufnr)
-        current_picker:refresh(finders.new_table {
-          results = new_projects,
-          entry_maker = function(entry)
-            return {
-              value = entry,
-              display = function()
-                return displayer {
-                  entry.name,
-                  { entry.parent, "TmuxerParentDir" }
-                }
-              end,
-              ordinal = entry.name .. " " .. entry.parent,
-            }
-          end
-        }, { reset_prompt = true })
-      end)
-
       return true
     end,
   }):find()
@@ -489,6 +444,13 @@ function M.setup(opts)
 
   vim.api.nvim_create_user_command("TmuxSwitchSession", M.tmux_sessions, {})
 
+  vim.api.nvim_create_user_command("TmuxToggleArchive", function()
+    M.config.show_archive = not M.config.show_archive
+  end, {})
+
+  vim.api.nvim_create_user_command("TmuxToggleNonGit", function()
+    M.config.show_non_git = not M.config.show_non_git
+  end, {})
 end
 
 return M
