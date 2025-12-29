@@ -387,27 +387,7 @@ function M.setup(opts)
   opts = opts or {}
   M.config = vim.tbl_deep_extend("force", M.config, opts)
 
-  -- Validate workspaces configuration
-  if opts.workspaces then
-    if type(opts.workspaces) ~= "table" then
-      vim.notify("tmuxer: 'workspaces' must be a table", vim.log.levels.ERROR)
-      return
-    end
-    M.workspaces = {}
-    for i, ws in ipairs(opts.workspaces) do
-      if type(ws) ~= "table" or not ws.name or not ws.path then
-        vim.notify(string.format("tmuxer: workspace[%d] must have 'name' and 'path'", i), vim.log.levels.ERROR)
-      else
-        local expanded_path = vim.fn.expand(ws.path)
-        if vim.fn.isdirectory(expanded_path) == 0 then
-          vim.notify(string.format("tmuxer: workspace '%s' path does not exist: %s", ws.name, ws.path), vim.log.levels.WARN)
-        end
-        table.insert(M.workspaces, ws)
-      end
-    end
-  else
-    M.workspaces = {}
-  end
+  M.workspaces = opts.workspaces or {}
 
   -- Set up parent directory highlight
   vim.api.nvim_set_hl(0, "TmuxerParentDir", M.config.parent_highlight)
