@@ -28,7 +28,7 @@ To configure the plugin with [lazy.nvim](https://github.com/folke/lazy.nvim), us
 return {
   "dkooll/tmuxer.nvim",
   dependencies = { "nvim-telescope/telescope.nvim" },
-  cmd = { "WorkspaceOpen", "TmuxSessions" },
+  cmd = { "TmuxCreateSession", "TmuxSwitchSession", "TmuxToggleArchive" },
   config = function()
     require("tmuxer").setup({
       workspaces = {
@@ -52,36 +52,26 @@ return {
     })
   end,
   keys = {
-    {
-      "<leader>tc",
-      function()
-        require("tmuxer").open_workspace_popup({
-          name = "workspaces",
-          path = "~/Documents/workspaces"
-        })
-      end,
-      desc = "Tmuxer: Create Tmux Session"
-    },
-    {
-      "<leader>ts",
-      function()
-        require("tmuxer").tmux_sessions()
-      end,
-      desc = "Tmuxer: Switch Tmux Session"
-    },
+    { "<leader>tc", "<cmd>TmuxCreateSession<cr>", desc = "Tmuxer: Create Session" },
+    { "<leader>ts", "<cmd>TmuxSwitchSession<cr>", desc = "Tmuxer: Switch Session" },
+    { "<leader>ta", "<cmd>TmuxToggleArchive<cr>", desc = "Tmuxer: Toggle Archive" },
   },
 }
 ```
 
 ## Commands
 
-`:WorkspaceOpen`
+`:TmuxCreateSession`
 
-Opens a Telescope picker to select a workspace, then shows Git projects within that workspace
+Opens a Telescope picker to browse Git projects within configured workspaces and create tmux sessions
 
-`:TmuxSessions`
+`:TmuxSwitchSession`
 
-Lists all non-attached tmux sessions and allows switching between them or killing sessions with <C-d>
+Lists all non-attached tmux sessions and allows switching between them or killing sessions with `<C-d>`
+
+`:TmuxToggleArchive`
+
+Toggles visibility of projects inside `archive` folders
 
 ## Notes
 
@@ -89,7 +79,7 @@ The plugin uses Telescope for an intuitive, searchable interface
 
 Projects are discovered by finding .git directories (uses fd if available for better performance)
 
-Automatically excludes folders named archive from search results
+Excludes folders named `archive` by default (toggle with `:TmuxToggleArchive`)
 
 Session names are generated from project names (non-alphanumeric characters replaced with underscores)
 
