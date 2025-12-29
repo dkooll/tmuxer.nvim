@@ -20,6 +20,8 @@ Kill tmux sessions without leaving Neovim
 
 Smart project sorting by parent directories
 
+## Requirements
+
 Neovim 0.7.0 or higher
 
 Tmux running (plugin checks for $TMUX environment variable)
@@ -108,13 +110,3 @@ We welcome contributions from the community! Whether it's reporting a bug, sugge
 <a href="https://github.com/dkooll/tmuxer.nvim/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=dkooll/tmuxer.nvim" />
 </a>
-
-## Requirements
-
-[Neovim](https://neovim.io/) 0.7.0 or higher
-
-[Tmux](https://github.com/tmux) running (plugin checks for $TMUX environment variable)
-
-[Telescope.nvim](https://github.com/nvim-telescope/telescope.nvim)
-
-[Fd](https://github.com/sharkdp/fd) command (optional, falls back to find if not available)
