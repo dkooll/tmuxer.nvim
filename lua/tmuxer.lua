@@ -20,6 +20,8 @@ M.config = {
   border = true,
   max_depth = 2,
   parent_highlight = { fg = "#9E8069", bold = false },
+  show_archive = false,
+  show_non_git = false,
 }
 
 -- Helper function to apply telescope theme if available
@@ -140,17 +142,41 @@ local function find_git_projects(workspace_path, max_depth)
   local has_fd = vim.fn.executable('fd') == 1
   local expanded_path = vim.fn.expand(workspace_path)
   local escaped_path = vim.fn.shellescape(expanded_path)
-  local cmd = has_fd and string.format(
-    "fd -H -t d '^.git$' %s -d %d --exclude 'archive' -x echo {//}",
-    escaped_path,
-    max_depth + 1
-  ) or string.format(
-    "find %s -maxdepth %d -type d -name .git -prune ! -path '*/archive/*' -exec dirname {} \\;",
-    escaped_path,
-    max_depth + 1
-  )
 
-  local found_paths = vim.fn.systemlist(cmd)
+  local archive_exclude = M.config.show_archive and "" or (has_fd and "--exclude 'archive'" or "! -path '*/archive/*'")
+
+  local found_paths
+  if M.config.show_non_git then
+    -- Show all directories (including non-git)
+    local cmd = has_fd and string.format(
+      "fd -H -t d --min-depth %d --max-depth %d %s . %s",
+      max_depth,
+      max_depth,
+      archive_exclude,
+      escaped_path
+    ) or string.format(
+      "find %s -mindepth %d -maxdepth %d -type d %s",
+      escaped_path,
+      max_depth,
+      max_depth,
+      archive_exclude
+    )
+    found_paths = vim.fn.systemlist(cmd)
+  else
+    -- Show only git directories
+    local cmd = has_fd and string.format(
+      "fd -H -t d '^.git$' %s -d %d %s -x echo {//}",
+      escaped_path,
+      max_depth + 1,
+      archive_exclude
+    ) or string.format(
+      "find %s -maxdepth %d -type d -name .git -prune %s -exec dirname {} \\;",
+      escaped_path,
+      max_depth + 1,
+      archive_exclude
+    )
+    found_paths = vim.fn.systemlist(cmd)
+  end
   local results = {}
   local path_sep = package.config:sub(1, 1)
   local parent_pattern = "([^" .. path_sep .. "]+)" .. path_sep .. "[^" .. path_sep .. "]+$"
@@ -392,7 +418,7 @@ function M.setup(opts)
   -- Set up parent directory highlight
   vim.api.nvim_set_hl(0, "TmuxerParentDir", M.config.parent_highlight)
 
-  vim.api.nvim_create_user_command("WorkspaceOpen", function()
+  vim.api.nvim_create_user_command("TmuxCreateSession", function()
     if #M.workspaces == 1 then
       M.open_workspace_popup(M.workspaces[1])
     else
@@ -416,7 +442,19 @@ function M.setup(opts)
     end
   end, {})
 
-  vim.api.nvim_create_user_command("TmuxSessions", M.tmux_sessions, {})
+  vim.api.nvim_create_user_command("TmuxSwitchSession", M.tmux_sessions, {})
+
+  vim.api.nvim_create_user_command("TmuxToggleArchive", function()
+    M.config.show_archive = not M.config.show_archive
+    local status = M.config.show_archive and "shown" or "hidden"
+    vim.notify(string.format("Archive directories: %s", status), vim.log.levels.INFO)
+  end, {})
+
+  vim.api.nvim_create_user_command("TmuxToggleNonGit", function()
+    M.config.show_non_git = not M.config.show_non_git
+    local status = M.config.show_non_git and "shown" or "hidden"
+    vim.notify(string.format("Non-git directories: %s", status), vim.log.levels.INFO)
+  end, {})
 end
 
 return M
