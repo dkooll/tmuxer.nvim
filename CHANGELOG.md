@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/dkooll/tmuxer.nvim/compare/v1.4.0...v1.5.0) (2025-12-30)
+
+
+### Features
+
+* show windows as sub-items in session picker with direct switch ([#16](https://github.com/dkooll/tmuxer.nvim/issues/16)) ([3376a8a](https://github.com/dkooll/tmuxer.nvim/commit/3376a8a1ae5844a1b9dede0c498c804b77e25b01))
+
 ## [1.4.0](https://github.com/dkooll/tmuxer.nvim/compare/v1.3.0...v1.4.0) (2025-12-30)
 
 
