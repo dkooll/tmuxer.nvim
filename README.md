@@ -74,6 +74,44 @@ return {
 }
 ```
 
+## Configuration
+
+`workspaces`
+
+List of workspaces with `name` and `path` (default: `{}`)
+
+`nvim_alias`
+
+Command to run in new tmux sessions (default: `"nvim"`)
+
+`max_depth`
+
+Directory depth for git project search (default: `2`)
+
+`theme`
+
+Telescope theme: `"dropdown"`, `"cursor"`, `"ivy"` or `nil` (default: `nil`)
+
+`previewer`
+
+Show telescope previewer (default: `true`)
+
+`border`
+
+Show border around picker (default: `true`)
+
+`show_archive`
+
+Show archived projects by default (default: `false`)
+
+`layout_config`
+
+Telescope layout dimensions (default: `{ height = 15, width = 80 }`)
+
+`parent_highlight`
+
+Highlight for parent directory (default: `{ fg = "#9E8069", bold = false }`)
+
 ## Commands
 
 `:TmuxCreateSession`
