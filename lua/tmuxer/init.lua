@@ -223,6 +223,21 @@ function M.open_workspace_popup(workspace, opts)
   }):find()
 end
 
+local function get_session_windows(session_name)
+  local output = vim.fn.systemlist(string.format(
+    'tmux list-windows -t %s -F "#{window_index}: #{window_name}"',
+    vim.fn.shellescape(session_name)
+  ))
+  local windows = {}
+  for _, line in ipairs(output) do
+    local index, name = line:match("^(%d+): (.+)$")
+    if index and name then
+      windows[#windows + 1] = { index = tonumber(index), name = name }
+    end
+  end
+  return windows
+end
+
 local function get_non_current_tmux_sessions()
   local output = vim.fn.systemlist('tmux list-sessions -F "#{?session_attached,1,0} #{session_name} #{session_path}"')
   local sessions = {}
@@ -232,7 +247,14 @@ local function get_non_current_tmux_sessions()
     if name and path and is_current == "0" then
       local project_name = path:match("[^/]+$") or ""
       local parent = path:match("([^/]+)/[^/]+$") or ""
-      sessions[#sessions + 1] = { name = name, path = path, project_name = project_name, parent = parent }
+      local windows = get_session_windows(name)
+      sessions[#sessions + 1] = {
+        name = name,
+        path = path,
+        project_name = project_name,
+        parent = parent,
+        windows = windows,
+      }
     end
   end
 
@@ -244,6 +266,66 @@ local function get_non_current_tmux_sessions()
   return sessions
 end
 
+local function build_session_entries(sessions)
+  local entries = {}
+  for _, session in ipairs(sessions) do
+    -- Add session entry
+    entries[#entries + 1] = {
+      type = "session",
+      session_name = session.name,
+      parent = session.parent,
+      display_name = session.name,
+      window_count = #session.windows,
+    }
+    -- Add window entries if more than 1 window
+    if #session.windows > 1 then
+      for _, win in ipairs(session.windows) do
+        entries[#entries + 1] = {
+          type = "window",
+          session_name = session.name,
+          parent = session.parent,
+          window_index = win.index,
+          window_name = win.name,
+          display_name = string.format("  └ %d: %s", win.index, win.name),
+        }
+      end
+    end
+  end
+  return entries
+end
+
+local function switch_to_window(session_name, window_index)
+  vim.fn.jobstart({ "tmux", "select-window", "-t", string.format("%s:%d", session_name, window_index) }, {
+    on_exit = function()
+      vim.fn.jobstart({ "tmux", "switch-client", "-t", session_name })
+    end
+  })
+end
+
+local function create_session_finder(sessions)
+  local entries = build_session_entries(sessions)
+  local displayer = entry_display.create {
+    separator = "/",
+    items = { { width = nil }, { width = nil } },
+  }
+
+  return finders.new_table {
+    results = entries,
+    entry_maker = function(entry)
+      return {
+        value = entry,
+        display = function()
+          if entry.type == "window" then
+            return entry.display_name
+          end
+          return displayer { entry.display_name, { entry.parent, "TmuxerParentDir" } }
+        end,
+        ordinal = entry.session_name .. " " .. entry.parent .. " " .. (entry.window_name or ""),
+      }
+    end
+  }
+end
+
 function M.tmux_sessions(opts)
   if not is_tmux_running() then
     vim.notify("Not in a tmux session", vim.log.levels.WARN)
@@ -253,30 +335,19 @@ function M.tmux_sessions(opts)
   local sessions = get_non_current_tmux_sessions()
   local picker_opts = apply_theme(opts)
 
-  local displayer = entry_display.create {
-    separator = "/",
-    items = { { width = nil }, { width = nil } },
-  }
-
   pickers.new(picker_opts, {
     prompt_title = "Switch Tmux Session",
-    finder = finders.new_table {
-      results = sessions,
-      entry_maker = function(entry)
-        return {
-          value = entry,
-          display = function()
-            return displayer { entry.name, { entry.parent, "TmuxerParentDir" } }
-          end,
-          ordinal = entry.name .. " " .. entry.parent,
-        }
-      end
-    },
+    finder = create_session_finder(sessions),
     sorter = conf.generic_sorter({}),
     attach_mappings = function(prompt_bufnr, map)
       actions.select_default:replace(function()
         actions.close(prompt_bufnr)
-        switch_tmux_session(action_state.get_selected_entry().value.name)
+        local entry = action_state.get_selected_entry().value
+        if entry.type == "window" then
+          switch_to_window(entry.session_name, entry.window_index)
+        else
+          switch_tmux_session(entry.session_name)
+        end
       end)
 
       map("i", "<C-d>", function()
@@ -285,13 +356,15 @@ function M.tmux_sessions(opts)
         local to_kill = {}
 
         if #selections > 0 then
-          for _, sel in ipairs(selections) do to_kill[#to_kill + 1] = sel.value.name end
+          for _, sel in ipairs(selections) do
+            to_kill[sel.value.session_name] = true
+          end
         else
           local sel = action_state.get_selected_entry()
-          if sel then to_kill[#to_kill + 1] = sel.value.name end
+          if sel then to_kill[sel.value.session_name] = true end
         end
 
-        for _, session in ipairs(to_kill) do
+        for session in pairs(to_kill) do
           vim.fn.jobstart({ "tmux", "kill-session", "-t", session }, {
             on_exit = function()
               if not vim.api.nvim_buf_is_valid(prompt_bufnr) then return end
@@ -302,18 +375,7 @@ function M.tmux_sessions(opts)
               end
               vim.schedule(function()
                 if vim.api.nvim_buf_is_valid(prompt_bufnr) then
-                  picker:refresh(finders.new_table({
-                    results = new_sessions,
-                    entry_maker = function(entry)
-                      return {
-                        value = entry,
-                        display = function()
-                          return displayer { entry.name, { entry.parent, "TmuxerParentDir" } }
-                        end,
-                        ordinal = entry.name .. " " .. entry.parent,
-                      }
-                    end
-                  }), { reset_prompt = true })
+                  picker:refresh(create_session_finder(new_sessions), { reset_prompt = true })
                 end
               end)
             end
