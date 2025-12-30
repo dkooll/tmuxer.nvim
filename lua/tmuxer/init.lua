@@ -107,7 +107,7 @@ local function find_git_projects(workspace_path, include_archive)
   local expanded = vim.fn.expand(workspace_path)
   local escaped = vim.fn.shellescape(expanded)
   local depth = M.config.max_depth + 1
-  local archive_depth = M.config.max_depth + 3  -- archive has extra nesting
+  local archive_depth = M.config.max_depth + 3 -- archive has extra nesting
 
   local cmd
   if has_fd then
@@ -117,7 +117,8 @@ local function find_git_projects(workspace_path, include_archive)
   else
     cmd = include_archive
         and string.format("find %s -maxdepth %d -type d -name .git -exec dirname {} \\;", escaped, archive_depth)
-        or string.format("find %s -maxdepth %d -type d -name .git ! -path '*/archive/*' -exec dirname {} \\;", escaped, depth)
+        or string.format("find %s -maxdepth %d -type d -name .git ! -path '*/archive/*' -exec dirname {} \\;", escaped,
+          depth)
   end
 
   local raw = vim.fn.systemlist(cmd)
@@ -152,9 +153,7 @@ local function find_git_projects(workspace_path, include_archive)
 end
 
 local function preload_cache(workspace_path)
-  -- Preload non-archive immediately (fast)
   find_git_projects(workspace_path, false)
-  -- Preload archive in background (slower, deeper search)
   vim.defer_fn(function()
     find_git_projects(workspace_path, true)
   end, 100)
@@ -352,35 +351,63 @@ function M.tmux_sessions(opts)
 
       map("i", "<C-d>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
-        local sel = action_state.get_selected_entry()
-        if not sel then return end
+        local selections = picker:get_multi_selection()
+        local entries = {}
 
-        local entry = sel.value
-        local cmd
-
-        if entry.type == "window" then
-          -- Kill just the window
-          cmd = { "tmux", "kill-window", "-t", string.format("%s:%d", entry.session_name, entry.window_index) }
+        if #selections > 0 then
+          for _, sel in ipairs(selections) do
+            entries[#entries + 1] = sel.value
+          end
         else
-          -- Kill the whole session
-          cmd = { "tmux", "kill-session", "-t", entry.session_name }
+          local sel = action_state.get_selected_entry()
+          if sel then entries[#entries + 1] = sel.value end
         end
 
-        vim.fn.jobstart(cmd, {
-          on_exit = function()
-            if not vim.api.nvim_buf_is_valid(prompt_bufnr) then return end
-            local new_sessions = get_non_current_tmux_sessions()
-            if #new_sessions == 0 then
-              vim.schedule(function() actions.close(prompt_bufnr) end)
-              return
+        if #entries == 0 then return end
+
+        local sessions_to_kill = {}
+        local windows_to_kill = {}
+
+        for _, entry in ipairs(entries) do
+          if entry.type == "session" then
+            sessions_to_kill[entry.session_name] = true
+          else
+            if not sessions_to_kill[entry.session_name] then
+              windows_to_kill[#windows_to_kill + 1] = {
+                session = entry.session_name,
+                index = entry.window_index,
+              }
             end
-            vim.schedule(function()
-              if vim.api.nvim_buf_is_valid(prompt_bufnr) then
-                picker:refresh(create_session_finder(new_sessions), { reset_prompt = true })
-              end
-            end)
           end
-        })
+        end
+
+        local pending = 0
+        local function on_done()
+          pending = pending - 1
+          if pending > 0 then return end
+          if not vim.api.nvim_buf_is_valid(prompt_bufnr) then return end
+          local new_sessions = get_non_current_tmux_sessions()
+          if #new_sessions == 0 then
+            vim.schedule(function() actions.close(prompt_bufnr) end)
+            return
+          end
+          vim.schedule(function()
+            if vim.api.nvim_buf_is_valid(prompt_bufnr) then
+              picker:refresh(create_session_finder(new_sessions), { reset_prompt = true })
+            end
+          end)
+        end
+
+        for session in pairs(sessions_to_kill) do
+          pending = pending + 1
+          vim.fn.jobstart({ "tmux", "kill-session", "-t", session }, { on_exit = on_done })
+        end
+
+        for _, win in ipairs(windows_to_kill) do
+          pending = pending + 1
+          vim.fn.jobstart({ "tmux", "kill-window", "-t", string.format("%s:%d", win.session, win.index) },
+            { on_exit = on_done })
+        end
       end)
       return true
     end,
