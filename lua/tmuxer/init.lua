@@ -352,35 +352,35 @@ function M.tmux_sessions(opts)
 
       map("i", "<C-d>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
-        local selections = picker:get_multi_selection()
-        local to_kill = {}
+        local sel = action_state.get_selected_entry()
+        if not sel then return end
 
-        if #selections > 0 then
-          for _, sel in ipairs(selections) do
-            to_kill[sel.value.session_name] = true
-          end
+        local entry = sel.value
+        local cmd
+
+        if entry.type == "window" then
+          -- Kill just the window
+          cmd = { "tmux", "kill-window", "-t", string.format("%s:%d", entry.session_name, entry.window_index) }
         else
-          local sel = action_state.get_selected_entry()
-          if sel then to_kill[sel.value.session_name] = true end
+          -- Kill the whole session
+          cmd = { "tmux", "kill-session", "-t", entry.session_name }
         end
 
-        for session in pairs(to_kill) do
-          vim.fn.jobstart({ "tmux", "kill-session", "-t", session }, {
-            on_exit = function()
-              if not vim.api.nvim_buf_is_valid(prompt_bufnr) then return end
-              local new_sessions = get_non_current_tmux_sessions()
-              if #new_sessions == 0 then
-                vim.schedule(function() actions.close(prompt_bufnr) end)
-                return
-              end
-              vim.schedule(function()
-                if vim.api.nvim_buf_is_valid(prompt_bufnr) then
-                  picker:refresh(create_session_finder(new_sessions), { reset_prompt = true })
-                end
-              end)
+        vim.fn.jobstart(cmd, {
+          on_exit = function()
+            if not vim.api.nvim_buf_is_valid(prompt_bufnr) then return end
+            local new_sessions = get_non_current_tmux_sessions()
+            if #new_sessions == 0 then
+              vim.schedule(function() actions.close(prompt_bufnr) end)
+              return
             end
-          })
-        end
+            vim.schedule(function()
+              if vim.api.nvim_buf_is_valid(prompt_bufnr) then
+                picker:refresh(create_session_finder(new_sessions), { reset_prompt = true })
+              end
+            end)
+          end
+        })
       end)
       return true
     end,
