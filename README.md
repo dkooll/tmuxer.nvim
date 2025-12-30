@@ -22,7 +22,7 @@ Smart project sorting by parent directories
 
 ## Requirements
 
-Neovim 0.7.0 or higher
+Neovim 0.10.4 or higher
 
 Tmux running (plugin checks for $TMUX environment variable)
 
