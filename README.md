@@ -20,6 +20,10 @@ Kill tmux sessions without leaving Neovim
 
 Smart project sorting by parent directories
 
+Toggle visibility of archived projects
+
+Health check for verifying plugin setup
+
 ## Requirements
 
 Neovim 0.10.4 or higher
@@ -65,6 +69,7 @@ return {
     { "<leader>tc", "<cmd>TmuxCreateSession<cr>", desc = "Tmuxer: Create Session" },
     { "<leader>ts", "<cmd>TmuxSwitchSession<cr>", desc = "Tmuxer: Switch Session" },
     { "<leader>ta", "<cmd>TmuxToggleArchive<cr>", desc = "Tmuxer: Toggle Archive" },
+    { "<leader>th", "<cmd>checkhealth tmuxer<cr>", desc = "Tmuxer: Health Check" },
   },
 }
 ```
