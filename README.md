@@ -14,9 +14,11 @@ Start Neovim instances within tmux sessions
 
 List and switch between existing tmux sessions
 
+View session windows as sub-items and switch directly to a specific window
+
 Multi-select support for batch operations
 
-Kill tmux sessions without leaving Neovim
+Kill tmux sessions or individual windows without leaving Neovim
 
 Smart project sorting by parent directories
 
@@ -120,7 +122,7 @@ Opens a Telescope picker to browse Git projects within configured workspaces and
 
 `:TmuxSwitchSession`
 
-Lists all non-attached tmux sessions and allows switching between them or killing sessions with `<C-d>`
+Lists all non-attached tmux sessions with their windows as sub-items (for sessions with multiple windows). Select a session to switch to it, or select a specific window to jump directly to that window. Use `<C-d>` to kill sessions or windows.
 
 `:TmuxToggleArchive`
 
@@ -136,9 +138,11 @@ Excludes folders named `archive` by default (toggle with `:TmuxToggleArchive`)
 
 Session names are generated from project names (non-alphanumeric characters replaced with underscores)
 
-Sessions can be killed directly from the session picker
+Sessions with multiple windows show windows as sub-items in the picker
 
-Multiple projects can be selected at once for batch operations
+Use `<C-d>` on a session to kill the entire session, or on a window to kill just that window
+
+Multi-select with `<Tab>` works for both sessions and windows
 
 If you want to use different neovim configurations or versions, you can override the default command within the config
 
