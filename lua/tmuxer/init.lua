@@ -296,7 +296,8 @@ local function create_session_finder(sessions)
             local suffix = string.format("/%d windows", entry.window_count)
             return displayer {
               entry.session_name .. "/",
-              { entry.parent .. suffix, "TmuxerParentDir" },
+              { entry.parent, "TmuxerParentDir" },
+              suffix,
             }
           end
           return displayer {
