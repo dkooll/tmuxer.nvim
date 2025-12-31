@@ -365,7 +365,7 @@ function M.tmux_sessions(opts)
             local finder = picker.finder
             for i, e in ipairs(finder.results) do
               if e.type == "session" and e.session_name == session_name then
-                picker:set_selection(picker:get_row(i))
+                picker:set_selection(i - 1)
                 break
               end
             end
