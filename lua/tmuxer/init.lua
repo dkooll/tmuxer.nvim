@@ -114,7 +114,8 @@ local function find_git_projects(workspace_path, include_archive)
   else
     cmd = include_archive
         and string.format("find %s -maxdepth %d -type d -name .git -exec dirname {} \\;", escaped, archive_depth)
-        or string.format("find %s -maxdepth %d -type d -name .git ! -path '*/archive/*' -exec dirname {} \\;", escaped, depth)
+        or string.format("find %s -maxdepth %d -type d -name .git ! -path '*/archive/*' -exec dirname {} \\;", escaped,
+          depth)
   end
 
   local results = {}
@@ -190,7 +191,8 @@ function M.open_workspace_popup(workspace, opts)
             local session_name = project.name:lower():gsub("[^%w_]", "_")
             create_tmux_session_with_nvim(session_name, project.path, existing_sessions, function()
               completed = completed + 1
-              vim.notify(string.format("Created session (%d/%d): %s", completed, total, session_name), vim.log.levels.INFO)
+              vim.notify(string.format("Created session (%d/%d): %s", completed, total, session_name),
+                vim.log.levels.INFO)
             end)
           end
         else
@@ -297,7 +299,7 @@ local function create_session_finder(sessions)
           return displayer {
             entry.session_name,
             { entry.parent, "TmuxerParentDir" },
-            { suffix, "Comment" },
+            { suffix,       "Comment" },
           }
         end,
         ordinal = entry.session_name .. " " .. entry.parent .. " " .. (entry.window_name or ""),
@@ -326,6 +328,7 @@ function M.tmux_sessions(opts)
     return
   end
 
+  expanded_sessions = {}
   local sessions = get_non_current_tmux_sessions()
 
   pickers.new(apply_theme(opts), {
@@ -356,7 +359,11 @@ function M.tmux_sessions(opts)
             return
           end
           local picker = action_state.get_current_picker(prompt_bufnr)
+          local row = picker:get_selection_row()
           picker:refresh(create_session_finder(sessions), { reset_prompt = false })
+          vim.schedule(function()
+            picker:set_selection(row)
+          end)
         end
       end
 
@@ -393,7 +400,8 @@ function M.tmux_sessions(opts)
         end
         for _, win in ipairs(windows_to_kill) do
           pending = pending + 1
-          vim.fn.jobstart({ "tmux", "kill-window", "-t", string.format("%s:%d", win.session, win.index) }, { on_exit = on_done })
+          vim.fn.jobstart({ "tmux", "kill-window", "-t", string.format("%s:%d", win.session, win.index) },
+            { on_exit = on_done })
         end
       end)
 
