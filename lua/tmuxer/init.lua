@@ -7,7 +7,8 @@ local actions = require('telescope.actions')
 local action_state = require('telescope.actions.state')
 local entry_display = require('telescope.pickers.entry_display')
 
-local project_cache = { with_archive = nil, without_archive = nil }
+local project_cache = {}
+local expanded_sessions = {}
 local has_fd = vim.fn.executable('fd') == 1
 
 M.config = {
@@ -35,14 +36,12 @@ local function apply_theme(opts)
   local ok, themes = pcall(require, 'telescope.themes')
   if not ok then return base end
 
-  if theme_name == "dropdown" then
-    return themes.get_dropdown(base)
-  elseif theme_name == "cursor" then
-    return themes.get_cursor(base)
-  elseif theme_name == "ivy" then
-    return themes.get_ivy(base)
-  end
-  return base
+  local theme_fn = {
+    dropdown = themes.get_dropdown,
+    cursor = themes.get_cursor,
+    ivy = themes.get_ivy,
+  }
+  return theme_fn[theme_name] and theme_fn[theme_name](base) or base
 end
 
 local function is_tmux_running()
@@ -100,14 +99,12 @@ end
 
 local function find_git_projects(workspace_path, include_archive)
   local cache_key = include_archive and "with_archive" or "without_archive"
-  if project_cache[cache_key] then
-    return project_cache[cache_key]
-  end
+  if project_cache[cache_key] then return project_cache[cache_key] end
 
   local expanded = vim.fn.expand(workspace_path)
   local escaped = vim.fn.shellescape(expanded)
   local depth = M.config.max_depth + 1
-  local archive_depth = M.config.max_depth + 3 -- archive has extra nesting
+  local archive_depth = M.config.max_depth + 3
 
   local cmd
   if has_fd then
@@ -117,22 +114,18 @@ local function find_git_projects(workspace_path, include_archive)
   else
     cmd = include_archive
         and string.format("find %s -maxdepth %d -type d -name .git -exec dirname {} \\;", escaped, archive_depth)
-        or string.format("find %s -maxdepth %d -type d -name .git ! -path '*/archive/*' -exec dirname {} \\;", escaped,
-          depth)
+        or string.format("find %s -maxdepth %d -type d -name .git ! -path '*/archive/*' -exec dirname {} \\;", escaped, depth)
   end
 
-  local raw = vim.fn.systemlist(cmd)
   local results = {}
-
-  for i = 1, #raw do
-    local project_path = raw[i]
-    if project_path ~= "" then
-      local name = project_path:match("[^/]+$")
-      local parent = project_path:match("([^/]+)/[^/]+$")
+  for _, path in ipairs(vim.fn.systemlist(cmd)) do
+    if path ~= "" then
+      local name = path:match("[^/]+$")
+      local parent = path:match("([^/]+)/[^/]+$")
       if name and parent then
         results[#results + 1] = {
           name = name,
-          path = project_path,
+          path = path,
           parent = parent,
           lower_name = name:lower(),
           lower_parent = parent:lower(),
@@ -142,9 +135,7 @@ local function find_git_projects(workspace_path, include_archive)
   end
 
   table.sort(results, function(a, b)
-    if a.lower_parent == b.lower_parent then
-      return a.lower_name < b.lower_name
-    end
+    if a.lower_parent == b.lower_parent then return a.lower_name < b.lower_name end
     return a.lower_parent < b.lower_parent
   end)
 
@@ -154,9 +145,7 @@ end
 
 local function preload_cache(workspace_path)
   find_git_projects(workspace_path, false)
-  vim.defer_fn(function()
-    find_git_projects(workspace_path, true)
-  end, 100)
+  vim.defer_fn(function() find_git_projects(workspace_path, true) end, 100)
 end
 
 function M.open_workspace_popup(workspace, opts)
@@ -166,7 +155,6 @@ function M.open_workspace_popup(workspace, opts)
   end
 
   local projects = find_git_projects(workspace.path, M.config.show_archive)
-  local picker_opts = apply_theme(opts)
   local existing_sessions = get_tmux_session_name_set()
 
   local displayer = entry_display.create {
@@ -174,7 +162,7 @@ function M.open_workspace_popup(workspace, opts)
     items = { { width = nil }, { width = nil } },
   }
 
-  pickers.new(picker_opts, {
+  pickers.new(apply_theme(opts), {
     prompt_title = "Select a project in " .. workspace.name,
     finder = finders.new_table {
       results = projects,
@@ -182,10 +170,7 @@ function M.open_workspace_popup(workspace, opts)
         return {
           value = entry,
           display = function()
-            return displayer {
-              entry.name,
-              { entry.parent, "TmuxerParentDir" }
-            }
+            return displayer { entry.name, { entry.parent, "TmuxerParentDir" } }
           end,
           ordinal = entry.name .. " " .. entry.parent,
         }
@@ -205,8 +190,7 @@ function M.open_workspace_popup(workspace, opts)
             local session_name = project.name:lower():gsub("[^%w_]", "_")
             create_tmux_session_with_nvim(session_name, project.path, existing_sessions, function()
               completed = completed + 1
-              vim.notify(string.format("Created session (%d/%d): %s", completed, total, session_name),
-                vim.log.levels.INFO)
+              vim.notify(string.format("Created session (%d/%d): %s", completed, total, session_name), vim.log.levels.INFO)
             end)
           end
         else
@@ -223,12 +207,8 @@ function M.open_workspace_popup(workspace, opts)
 end
 
 local function get_session_windows(session_name)
-  local output = vim.fn.systemlist(string.format(
-    'tmux list-windows -t %s -F "#{window_index}: #{window_name}"',
-    vim.fn.shellescape(session_name)
-  ))
   local windows = {}
-  for _, line in ipairs(output) do
+  for _, line in ipairs(vim.fn.systemlist(string.format('tmux list-windows -t %s -F "#{window_index}: #{window_name}"', vim.fn.shellescape(session_name)))) do
     local index, name = line:match("^(%d+): (.+)$")
     if index and name then
       windows[#windows + 1] = { index = tonumber(index), name = name }
@@ -238,21 +218,14 @@ local function get_session_windows(session_name)
 end
 
 local function get_non_current_tmux_sessions()
-  local output = vim.fn.systemlist('tmux list-sessions -F "#{?session_attached,1,0} #{session_name} #{session_path}"')
   local sessions = {}
-
-  for _, line in ipairs(output) do
+  for _, line in ipairs(vim.fn.systemlist('tmux list-sessions -F "#{?session_attached,1,0} #{session_name} #{session_path}"')) do
     local is_current, name, path = line:match("^(%d)%s+(%S+)%s+(.+)$")
     if name and path and is_current == "0" then
-      local project_name = path:match("[^/]+$") or ""
-      local parent = path:match("([^/]+)/[^/]+$") or ""
-      local windows = get_session_windows(name)
       sessions[#sessions + 1] = {
         name = name,
-        path = path,
-        project_name = project_name,
-        parent = parent,
-        windows = windows,
+        parent = path:match("([^/]+)/[^/]+$") or "",
+        windows = get_session_windows(name),
       }
     end
   end
@@ -261,32 +234,24 @@ local function get_non_current_tmux_sessions()
     if a.parent == b.parent then return a.name < b.name end
     return a.parent < b.parent
   end)
-
   return sessions
 end
-
--- Track collapsed state per session (default: expanded for multi-window sessions)
-local collapsed_sessions = {}
 
 local function build_session_entries(sessions)
   local entries = {}
   for _, session in ipairs(sessions) do
-    local is_collapsed = collapsed_sessions[session.name]
+    local is_expanded = expanded_sessions[session.name]
     local win_count = #session.windows
 
-    -- Add session entry
     entries[#entries + 1] = {
       type = "session",
       session_name = session.name,
       parent = session.parent,
-      display_name = session.name,
       window_count = win_count,
-      windows = session.windows,
-      collapsed = is_collapsed,
+      expanded = is_expanded,
     }
 
-    -- Add window entries if more than 1 window AND not collapsed
-    if win_count > 1 and not is_collapsed then
+    if win_count > 1 and is_expanded then
       for _, win in ipairs(session.windows) do
         entries[#entries + 1] = {
           type = "window",
@@ -294,7 +259,6 @@ local function build_session_entries(sessions)
           parent = session.parent,
           window_index = win.index,
           window_name = win.name,
-          display_name = string.format("  └ %d: %s", win.index, win.name),
         }
       end
     end
@@ -324,15 +288,14 @@ local function create_session_finder(sessions)
         value = entry,
         display = function()
           if entry.type == "window" then
-            return entry.display_name
+            return string.format("  └ %d: %s", entry.window_index, entry.window_name)
           end
-          -- Show window count indicator for collapsed multi-window sessions
           local suffix = ""
-          if entry.window_count > 1 and entry.collapsed then
+          if entry.window_count > 1 and not entry.expanded then
             suffix = string.format(": %d windows", entry.window_count)
           end
           return displayer {
-            entry.display_name,
+            entry.session_name,
             { entry.parent, "TmuxerParentDir" },
             { suffix, "Comment" },
           }
@@ -343,6 +306,20 @@ local function create_session_finder(sessions)
   }
 end
 
+local function refresh_picker(prompt_bufnr, sessions)
+  if not vim.api.nvim_buf_is_valid(prompt_bufnr) then return end
+  local picker = action_state.get_current_picker(prompt_bufnr)
+  if #sessions == 0 then
+    vim.schedule(function() actions.close(prompt_bufnr) end)
+  else
+    vim.schedule(function()
+      if vim.api.nvim_buf_is_valid(prompt_bufnr) then
+        picker:refresh(create_session_finder(sessions), { reset_prompt = true })
+      end
+    end)
+  end
+end
+
 function M.tmux_sessions(opts)
   if not is_tmux_running() then
     vim.notify("Not in a tmux session", vim.log.levels.WARN)
@@ -350,9 +327,8 @@ function M.tmux_sessions(opts)
   end
 
   local sessions = get_non_current_tmux_sessions()
-  local picker_opts = apply_theme(opts)
 
-  pickers.new(picker_opts, {
+  pickers.new(apply_theme(opts), {
     prompt_title = "Switch Tmux Session",
     finder = create_session_finder(sessions),
     sorter = conf.generic_sorter({}),
@@ -367,90 +343,60 @@ function M.tmux_sessions(opts)
         end
       end)
 
-      -- Collapse windows (right arrow)
-      map("i", "<Right>", function()
+      local function toggle_expand(expand)
         local sel = action_state.get_selected_entry()
         if not sel then return end
         local entry = sel.value
-        if entry.type == "session" and entry.window_count > 1 and not entry.collapsed then
-          collapsed_sessions[entry.session_name] = true
+        if entry.type == "session" and entry.window_count > 1 then
+          if expand and not entry.expanded then
+            expanded_sessions[entry.session_name] = true
+          elseif not expand and entry.expanded then
+            expanded_sessions[entry.session_name] = nil
+          else
+            return
+          end
           local picker = action_state.get_current_picker(prompt_bufnr)
           picker:refresh(create_session_finder(sessions), { reset_prompt = false })
         end
-      end)
+      end
 
-      -- Expand windows (left arrow)
-      map("i", "<Left>", function()
-        local sel = action_state.get_selected_entry()
-        if not sel then return end
-        local entry = sel.value
-        if entry.type == "session" and entry.window_count > 1 and entry.collapsed then
-          collapsed_sessions[entry.session_name] = nil
-          local picker = action_state.get_current_picker(prompt_bufnr)
-          picker:refresh(create_session_finder(sessions), { reset_prompt = false })
-        end
-      end)
+      map("i", "<Left>", function() toggle_expand(true) end)
+      map("i", "<Right>", function() toggle_expand(false) end)
 
       map("i", "<C-d>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
         local selections = picker:get_multi_selection()
-        local entries = {}
 
-        if #selections > 0 then
-          for _, sel in ipairs(selections) do
-            entries[#entries + 1] = sel.value
-          end
-        else
-          local sel = action_state.get_selected_entry()
-          if sel then entries[#entries + 1] = sel.value end
-        end
+        local entries = #selections > 0 and vim.tbl_map(function(s) return s.value end, selections)
+            or { action_state.get_selected_entry() and action_state.get_selected_entry().value }
 
-        if #entries == 0 then return end
+        if #entries == 0 or not entries[1] then return end
 
-        local sessions_to_kill = {}
-        local windows_to_kill = {}
-
+        local sessions_to_kill, windows_to_kill = {}, {}
         for _, entry in ipairs(entries) do
           if entry.type == "session" then
             sessions_to_kill[entry.session_name] = true
-          else
-            if not sessions_to_kill[entry.session_name] then
-              windows_to_kill[#windows_to_kill + 1] = {
-                session = entry.session_name,
-                index = entry.window_index,
-              }
-            end
+          elseif not sessions_to_kill[entry.session_name] then
+            windows_to_kill[#windows_to_kill + 1] = { session = entry.session_name, index = entry.window_index }
           end
         end
 
         local pending = 0
         local function on_done()
           pending = pending - 1
-          if pending > 0 then return end
-          if not vim.api.nvim_buf_is_valid(prompt_bufnr) then return end
-          local new_sessions = get_non_current_tmux_sessions()
-          if #new_sessions == 0 then
-            vim.schedule(function() actions.close(prompt_bufnr) end)
-            return
-          end
-          vim.schedule(function()
-            if vim.api.nvim_buf_is_valid(prompt_bufnr) then
-              picker:refresh(create_session_finder(new_sessions), { reset_prompt = true })
-            end
-          end)
+          if pending == 0 then refresh_picker(prompt_bufnr, get_non_current_tmux_sessions()) end
         end
 
         for session in pairs(sessions_to_kill) do
           pending = pending + 1
           vim.fn.jobstart({ "tmux", "kill-session", "-t", session }, { on_exit = on_done })
         end
-
         for _, win in ipairs(windows_to_kill) do
           pending = pending + 1
-          vim.fn.jobstart({ "tmux", "kill-window", "-t", string.format("%s:%d", win.session, win.index) },
-            { on_exit = on_done })
+          vim.fn.jobstart({ "tmux", "kill-window", "-t", string.format("%s:%d", win.session, win.index) }, { on_exit = on_done })
         end
       end)
+
       return true
     end,
   }):find()
