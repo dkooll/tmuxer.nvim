@@ -18,7 +18,6 @@ M.config = {
   previewer = true,
   border = true,
   parent_highlight = { fg = "#9E8069", bold = false },
-  window_count_highlight = { fg = "#A9B665" },
   show_archive = false,
   max_depth = 2,
 }
@@ -297,8 +296,7 @@ local function create_session_finder(sessions)
             local suffix = string.format("/%d windows", entry.window_count)
             return displayer {
               entry.session_name .. "/",
-              { entry.parent, "TmuxerParentDir" },
-              { suffix, "TmuxerWindowCount" },
+              { entry.parent .. suffix, "TmuxerParentDir" },
             }
           end
           return displayer {
@@ -416,7 +414,6 @@ function M.setup(opts)
   M.workspaces = opts.workspaces or {}
 
   vim.api.nvim_set_hl(0, "TmuxerParentDir", M.config.parent_highlight)
-  vim.api.nvim_set_hl(0, "TmuxerWindowCount", M.config.window_count_highlight)
 
   if #M.workspaces > 0 then
     preload_cache(M.workspaces[1].path)
