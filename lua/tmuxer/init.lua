@@ -18,7 +18,7 @@ M.config = {
   previewer = true,
   border = true,
   parent_highlight = { fg = "#9E8069", bold = false },
-  window_count_highlight = { fg = "#A9B665", italic = true },
+  window_count_highlight = { fg = "#7a7a7a", italic = true },
   show_archive = false,
   max_depth = 2,
 }
@@ -294,7 +294,7 @@ local function create_session_finder(sessions)
             return string.format("   %d: %s", entry.window_index, entry.window_name)
           end
           if entry.window_count > 1 and not entry.expanded then
-            local suffix = string.format(":%d windows", entry.window_count)
+            local suffix = string.format("/%d windows", entry.window_count)
             return displayer {
               entry.session_name .. "/",
               { entry.parent, "TmuxerParentDir" },
