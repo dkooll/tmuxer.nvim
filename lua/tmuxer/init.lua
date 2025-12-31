@@ -367,8 +367,8 @@ function M.tmux_sessions(opts)
         end
       end
 
-      map("i", "<Left>", function() toggle_expand(true) end)
-      map("i", "<Right>", function() toggle_expand(false) end)
+      map("i", "<Right>", function() toggle_expand(true) end)
+      map("i", "<Left>", function() toggle_expand(false) end)
 
       map("i", "<C-d>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
