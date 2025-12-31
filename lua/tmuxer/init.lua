@@ -369,9 +369,9 @@ function M.tmux_sessions(opts)
             end
           end
           picker:refresh(new_finder, { reset_prompt = false })
-          vim.schedule(function()
+          vim.defer_fn(function()
             picker:set_selection(target_row)
-          end)
+          end, 50)
         end
       end
 
