@@ -265,19 +265,28 @@ local function get_non_current_tmux_sessions()
   return sessions
 end
 
+-- Track collapsed state per session (default: expanded for multi-window sessions)
+local collapsed_sessions = {}
+
 local function build_session_entries(sessions)
   local entries = {}
   for _, session in ipairs(sessions) do
+    local is_collapsed = collapsed_sessions[session.name]
+    local win_count = #session.windows
+
     -- Add session entry
     entries[#entries + 1] = {
       type = "session",
       session_name = session.name,
       parent = session.parent,
       display_name = session.name,
-      window_count = #session.windows,
+      window_count = win_count,
+      windows = session.windows,
+      collapsed = is_collapsed,
     }
-    -- Add window entries if more than 1 window
-    if #session.windows > 1 then
+
+    -- Add window entries if more than 1 window AND not collapsed
+    if win_count > 1 and not is_collapsed then
       for _, win in ipairs(session.windows) do
         entries[#entries + 1] = {
           type = "window",
@@ -285,7 +294,7 @@ local function build_session_entries(sessions)
           parent = session.parent,
           window_index = win.index,
           window_name = win.name,
-          display_name = string.format("   %d: %s", win.index, win.name),
+          display_name = string.format("  └ %d: %s", win.index, win.name),
         }
       end
     end
@@ -305,7 +314,7 @@ local function create_session_finder(sessions)
   local entries = build_session_entries(sessions)
   local displayer = entry_display.create {
     separator = "/",
-    items = { { width = nil }, { width = nil } },
+    items = { { width = nil }, { width = nil }, { width = nil } },
   }
 
   return finders.new_table {
@@ -317,7 +326,16 @@ local function create_session_finder(sessions)
           if entry.type == "window" then
             return entry.display_name
           end
-          return displayer { entry.display_name, { entry.parent, "TmuxerParentDir" } }
+          -- Show window count indicator for collapsed multi-window sessions
+          local suffix = ""
+          if entry.window_count > 1 and entry.collapsed then
+            suffix = string.format(": %d windows", entry.window_count)
+          end
+          return displayer {
+            entry.display_name,
+            { entry.parent, "TmuxerParentDir" },
+            { suffix, "Comment" },
+          }
         end,
         ordinal = entry.session_name .. " " .. entry.parent .. " " .. (entry.window_name or ""),
       }
@@ -346,6 +364,30 @@ function M.tmux_sessions(opts)
           switch_to_window(entry.session_name, entry.window_index)
         else
           switch_tmux_session(entry.session_name)
+        end
+      end)
+
+      -- Collapse windows (right arrow)
+      map("i", "<Right>", function()
+        local sel = action_state.get_selected_entry()
+        if not sel then return end
+        local entry = sel.value
+        if entry.type == "session" and entry.window_count > 1 and not entry.collapsed then
+          collapsed_sessions[entry.session_name] = true
+          local picker = action_state.get_current_picker(prompt_bufnr)
+          picker:refresh(create_session_finder(sessions), { reset_prompt = false })
+        end
+      end)
+
+      -- Expand windows (left arrow)
+      map("i", "<Left>", function()
+        local sel = action_state.get_selected_entry()
+        if not sel then return end
+        local entry = sel.value
+        if entry.type == "session" and entry.window_count > 1 and entry.collapsed then
+          collapsed_sessions[entry.session_name] = nil
+          local picker = action_state.get_current_picker(prompt_bufnr)
+          picker:refresh(create_session_finder(sessions), { reset_prompt = false })
         end
       end)
 
