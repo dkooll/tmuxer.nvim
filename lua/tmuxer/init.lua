@@ -290,7 +290,7 @@ local function create_session_finder(sessions)
         value = entry,
         display = function()
           if entry.type == "window" then
-            return string.format("  └ %d: %s", entry.window_index, entry.window_name)
+            return string.format("  %s/%s:%d %s", entry.session_name, entry.parent, entry.window_index, entry.window_name)
           end
           local suffix = ""
           if entry.window_count > 1 and not entry.expanded then
