@@ -367,24 +367,39 @@ function M.tmux_sessions(opts)
           end
         end
 
-        local pending = 0
-        local function on_done()
-          pending = pending - 1
-          if pending == 0 then refresh_picker(prompt_bufnr, get_non_current_tmux_sessions()) end
+        local function refresh()
+          refresh_picker(prompt_bufnr, get_non_current_tmux_sessions())
         end
 
-        for session in pairs(sessions_to_kill) do
-          pending = pending + 1
-          vim.fn.jobstart({ "tmux", "kill-session", "-t", session }, { on_exit = on_done })
-        end
-        table.sort(windows_to_kill, function(a, b)
-          if a.session ~= b.session then return a.session < b.session end
-          return a.index > b.index
-        end)
-        for _, win in ipairs(windows_to_kill) do
-          pending = pending + 1
-          vim.fn.jobstart({ "tmux", "kill-window", "-t", string.format("%s:%d", win.session, win.index) },
-            { on_exit = on_done })
+        local session_count = 0
+        for _ in pairs(sessions_to_kill) do session_count = session_count + 1 end
+
+        if session_count > 0 and #windows_to_kill == 0 then
+          local pending = session_count
+          for session in pairs(sessions_to_kill) do
+            vim.fn.jobstart({ "tmux", "kill-session", "-t", session }, {
+              on_exit = function()
+                pending = pending - 1
+                if pending == 0 then refresh() end
+              end
+            })
+          end
+        elseif #windows_to_kill > 0 then
+          table.sort(windows_to_kill, function(a, b)
+            if a.session ~= b.session then return a.session < b.session end
+            return a.index > b.index
+          end)
+          local function kill_next(idx)
+            if idx > #windows_to_kill then
+              refresh()
+              return
+            end
+            local win = windows_to_kill[idx]
+            vim.fn.jobstart({ "tmux", "kill-window", "-t", string.format("%s:%d", win.session, win.index) }, {
+              on_exit = function() kill_next(idx + 1) end
+            })
+          end
+          kill_next(1)
         end
       end)
 
