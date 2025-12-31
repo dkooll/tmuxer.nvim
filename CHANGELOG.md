@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/dkooll/tmuxer.nvim/compare/v1.5.0...v1.6.0) (2025-12-31)
+
+
+### Features
+
+* add collapsible windows in session picker with arrow key toggle ([#18](https://github.com/dkooll/tmuxer.nvim/issues/18)) ([67ecc5a](https://github.com/dkooll/tmuxer.nvim/commit/67ecc5a7f1dc3c2296d29c9f847ca479cfd8a010))
+
 ## [1.5.0](https://github.com/dkooll/tmuxer.nvim/compare/v1.4.0...v1.5.0) (2025-12-30)
 
 
