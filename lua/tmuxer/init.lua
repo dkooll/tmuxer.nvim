@@ -5,7 +5,6 @@ local finders = require('telescope.finders')
 local conf = require('telescope.config').values
 local actions = require('telescope.actions')
 local action_state = require('telescope.actions.state')
-local entry_display = require('telescope.pickers.entry_display')
 
 local project_cache = {}
 local expanded_sessions = {}
@@ -158,11 +157,6 @@ function M.open_workspace_popup(workspace, opts)
   local projects = find_git_projects(workspace.path, M.config.show_archive)
   local existing_sessions = get_tmux_session_name_set()
 
-  local displayer = entry_display.create {
-    separator = "/",
-    items = { { width = nil }, { width = nil } },
-  }
-
   pickers.new(apply_theme(opts), {
     prompt_title = "Select a project in " .. workspace.name,
     finder = finders.new_table {
@@ -170,9 +164,7 @@ function M.open_workspace_popup(workspace, opts)
       entry_maker = function(entry)
         return {
           value = entry,
-          display = function()
-            return displayer { entry.name, { entry.parent, "TmuxerParentDir" } }
-          end,
+          display = entry.name .. "/" .. entry.parent,
           ordinal = entry.name .. " " .. entry.parent,
         }
       end
@@ -278,10 +270,6 @@ end
 
 local function create_session_finder(sessions)
   local entries = build_session_entries(sessions)
-  local displayer = entry_display.create {
-    separator = "",
-    items = { { width = nil }, { width = nil }, { remaining = true } },
-  }
 
   return finders.new_table {
     results = entries,
@@ -293,17 +281,9 @@ local function create_session_finder(sessions)
             return string.format("   %d: %s", entry.window_index, entry.window_name)
           end
           if entry.window_count > 1 and not entry.expanded then
-            local suffix = string.format("/%d windows", entry.window_count)
-            return displayer {
-              entry.session_name .. "/",
-              { entry.parent, "TmuxerParentDir" },
-              suffix,
-            }
+            return string.format("%s/%s: %d windows", entry.session_name, entry.parent, entry.window_count)
           end
-          return displayer {
-            entry.session_name .. "/",
-            { entry.parent, "TmuxerParentDir" },
-          }
+          return entry.session_name .. "/" .. entry.parent
         end,
         ordinal = entry.session_name .. " " .. entry.parent .. " " .. (entry.window_name or ""),
       }
