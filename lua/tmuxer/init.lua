@@ -18,7 +18,7 @@ M.config = {
   previewer = true,
   border = true,
   parent_highlight = { fg = "#9E8069", bold = false },
-  window_count_highlight = { fg = "#7a7a7a", italic = true },
+  window_count_highlight = { fg = "#A9B665" },
   show_archive = false,
   max_depth = 2,
 }

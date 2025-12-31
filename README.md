@@ -116,7 +116,7 @@ Highlight for parent directory (default: `{ fg = "#9E8069", bold = false }`)
 
 `window_count_highlight`
 
-Highlight for window count in session picker (default: `{ fg = "#7a7a7a", italic = true }`)
+Highlight for window count in session picker (default: `{ fg = "#A9B665" }`)
 
 ## Commands
 
