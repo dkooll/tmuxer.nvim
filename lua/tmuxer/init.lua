@@ -279,8 +279,8 @@ end
 local function create_session_finder(sessions)
   local entries = build_session_entries(sessions)
   local displayer = entry_display.create {
-    separator = "/",
-    items = { { width = nil }, { width = nil }, { width = nil } },
+    separator = "",
+    items = { { width = nil }, { width = nil }, { remaining = true } },
   }
 
   return finders.new_table {
@@ -292,13 +292,17 @@ local function create_session_finder(sessions)
           if entry.type == "window" then
             return string.format("   %d: %s", entry.window_index, entry.window_name)
           end
-          local suffix = ""
           if entry.window_count > 1 and not entry.expanded then
-            suffix = string.format(":%d windows", entry.window_count)
+            local suffix = string.format(":%d windows", entry.window_count)
+            return displayer {
+              entry.session_name .. "/",
+              { entry.parent, "TmuxerParentDir" },
+              { suffix, "TmuxerWindowCount" },
+            }
           end
           return displayer {
-            entry.session_name,
-            { entry.parent .. suffix, "TmuxerParentDir" },
+            entry.session_name .. "/",
+            { entry.parent, "TmuxerParentDir" },
           }
         end,
         ordinal = entry.session_name .. " " .. entry.parent .. " " .. (entry.window_name or ""),
@@ -411,6 +415,7 @@ function M.setup(opts)
   M.workspaces = opts.workspaces or {}
 
   vim.api.nvim_set_hl(0, "TmuxerParentDir", M.config.parent_highlight)
+  vim.api.nvim_set_hl(0, "TmuxerWindowCount", { italic = true, fg = "#7a7a7a" })
 
   if #M.workspaces > 0 then
     preload_cache(M.workspaces[1].path)
