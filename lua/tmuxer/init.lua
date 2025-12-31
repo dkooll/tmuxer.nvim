@@ -359,19 +359,7 @@ function M.tmux_sessions(opts)
             return
           end
           local picker = action_state.get_current_picker(prompt_bufnr)
-          local session_name = entry.session_name
-          local new_finder = create_session_finder(sessions)
-          local target_row = 0
-          for i, e in ipairs(new_finder.results) do
-            if e.type == "session" and e.session_name == session_name then
-              target_row = i - 1
-              break
-            end
-          end
-          picker:refresh(new_finder, { reset_prompt = false })
-          vim.defer_fn(function()
-            picker:set_selection(target_row)
-          end, 50)
+          picker:refresh(create_session_finder(sessions), { reset_prompt = false })
         end
       end
 
