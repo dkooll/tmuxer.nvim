@@ -114,6 +114,10 @@ Telescope layout dimensions (default: `{ height = 15, width = 80 }`)
 
 Highlight for parent directory (default: `{ fg = "#9E8069", bold = false }`)
 
+`window_count_highlight`
+
+Highlight for window count in session picker (default: `{ fg = "#A9B665", italic = true }`)
+
 ## Commands
 
 `:TmuxCreateSession`
