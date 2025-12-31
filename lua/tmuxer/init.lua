@@ -285,7 +285,7 @@ local function build_session_entries(sessions)
           parent = session.parent,
           window_index = win.index,
           window_name = win.name,
-          display_name = string.format("  └ %d: %s", win.index, win.name),
+          display_name = string.format("   %d: %s", win.index, win.name),
         }
       end
     end
