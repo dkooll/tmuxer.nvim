@@ -377,6 +377,7 @@ function M.tmux_sessions(opts)
           pending = pending + 1
           vim.fn.jobstart({ "tmux", "kill-session", "-t", session }, { on_exit = on_done })
         end
+        table.sort(windows_to_kill, function(a, b) return a.index > b.index end)
         for _, win in ipairs(windows_to_kill) do
           pending = pending + 1
           vim.fn.jobstart({ "tmux", "kill-window", "-t", string.format("%s:%d", win.session, win.index) },
