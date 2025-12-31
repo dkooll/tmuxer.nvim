@@ -359,16 +359,7 @@ function M.tmux_sessions(opts)
             return
           end
           local picker = action_state.get_current_picker(prompt_bufnr)
-          local session_name = entry.session_name
-          local new_finder = create_session_finder(sessions)
-          local target_idx = 1
-          for i, e in ipairs(new_finder.results) do
-            if e.type == "session" and e.session_name == session_name then
-              target_idx = i
-              break
-            end
-          end
-          picker:refresh(new_finder, { reset_prompt = false, default_selection_index = target_idx })
+          picker:refresh(create_session_finder(sessions), { reset_prompt = false })
         end
       end
 
