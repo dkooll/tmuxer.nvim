@@ -349,19 +349,24 @@ function M.tmux_sessions(opts)
       map("i", "<Right>", function() toggle_expand(true) end)
       map("i", "<Left>", function() toggle_expand(false) end)
 
-      map("i", "<C-e>", function()
+      map("i", "<C-c>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
+        local any_expanded = false
         for _, session in ipairs(sessions) do
-          if #session.windows > 1 then
-            expanded_sessions[session.name] = true
+          if #session.windows > 1 and expanded_sessions[session.name] then
+            any_expanded = true
+            break
           end
         end
-        picker:refresh(create_session_finder(sessions), { reset_prompt = false })
-      end)
-
-      map("i", "<C-w>", function()
-        local picker = action_state.get_current_picker(prompt_bufnr)
-        expanded_sessions = {}
+        if any_expanded then
+          expanded_sessions = {}
+        else
+          for _, session in ipairs(sessions) do
+            if #session.windows > 1 then
+              expanded_sessions[session.name] = true
+            end
+          end
+        end
         picker:refresh(create_session_finder(sessions), { reset_prompt = false })
       end)
 
