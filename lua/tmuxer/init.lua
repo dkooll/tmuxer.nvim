@@ -16,7 +16,6 @@ M.config = {
   theme = nil,
   previewer = true,
   border = true,
-  parent_highlight = { fg = "#9E8069", bold = false },
   show_archive = false,
   max_depth = 2,
 }
@@ -433,8 +432,6 @@ function M.setup(opts)
   opts = opts or {}
   M.config = vim.tbl_deep_extend("force", M.config, opts)
   M.workspaces = opts.workspaces or {}
-
-  vim.api.nvim_set_hl(0, "TmuxerParentDir", M.config.parent_highlight)
 
   if #M.workspaces > 0 then
     preload_cache(M.workspaces[1].path)

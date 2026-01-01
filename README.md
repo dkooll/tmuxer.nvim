@@ -110,10 +110,6 @@ Show archived projects by default (default: `false`)
 
 Telescope layout dimensions (default: `{ height = 15, width = 80 }`)
 
-`parent_highlight`
-
-Highlight for parent directory (default: `{ fg = "#9E8069", bold = false }`)
-
 ## Commands
 
 `:TmuxCreateSession`
