@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/dkooll/tmuxer.nvim/compare/v1.6.0...v1.7.0) (2026-01-01)
+
+
+### Features
+
+* add Ctrl-c to toggle all session windows ([#20](https://github.com/dkooll/tmuxer.nvim/issues/20)) ([b37ee03](https://github.com/dkooll/tmuxer.nvim/commit/b37ee03b40baf75a9b3153d5d7509c606db7345c))
+
 ## [1.6.0](https://github.com/dkooll/tmuxer.nvim/compare/v1.5.0...v1.6.0) (2025-12-31)
 
 
