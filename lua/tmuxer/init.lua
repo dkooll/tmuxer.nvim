@@ -352,7 +352,7 @@ function M.tmux_sessions(opts)
       map("i", "<C-e>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
         for _, entry in ipairs(sessions) do
-          if entry.window_count > 1 then
+          if (entry.window_count or 0) > 1 then
             expanded_sessions[entry.session_name] = true
           end
         end
