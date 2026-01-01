@@ -16,7 +16,6 @@ M.config = {
   theme = nil,
   previewer = true,
   border = true,
-  parent_highlight = { fg = "#9E8069", bold = false },
   show_archive = false,
   max_depth = 2,
 }
@@ -349,6 +348,27 @@ function M.tmux_sessions(opts)
       map("i", "<Right>", function() toggle_expand(true) end)
       map("i", "<Left>", function() toggle_expand(false) end)
 
+      map("i", "<C-c>", function()
+        local picker = action_state.get_current_picker(prompt_bufnr)
+        local any_expanded = false
+        for _, session in ipairs(sessions) do
+          if #session.windows > 1 and expanded_sessions[session.name] then
+            any_expanded = true
+            break
+          end
+        end
+        if any_expanded then
+          expanded_sessions = {}
+        else
+          for _, session in ipairs(sessions) do
+            if #session.windows > 1 then
+              expanded_sessions[session.name] = true
+            end
+          end
+        end
+        picker:refresh(create_session_finder(sessions), { reset_prompt = false })
+      end)
+
       map("i", "<C-d>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
         local selections = picker:get_multi_selection()
@@ -412,8 +432,6 @@ function M.setup(opts)
   opts = opts or {}
   M.config = vim.tbl_deep_extend("force", M.config, opts)
   M.workspaces = opts.workspaces or {}
-
-  vim.api.nvim_set_hl(0, "TmuxerParentDir", M.config.parent_highlight)
 
   if #M.workspaces > 0 then
     preload_cache(M.workspaces[1].path)
