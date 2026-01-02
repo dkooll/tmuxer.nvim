@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/dkooll/tmuxer.nvim/compare/v1.7.0...v1.8.0) (2026-01-02)
+
+
+### Features
+
+* batch tmux queries and fix stale session state after deletions ([#22](https://github.com/dkooll/tmuxer.nvim/issues/22)) ([139af41](https://github.com/dkooll/tmuxer.nvim/commit/139af412f0ba59dd767d8d4f172e71338a881390))
+
 ## [1.7.0](https://github.com/dkooll/tmuxer.nvim/compare/v1.6.0...v1.7.0) (2026-01-01)
 
 
