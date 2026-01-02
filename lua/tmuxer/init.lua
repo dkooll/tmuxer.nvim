@@ -96,7 +96,7 @@ local function create_tmux_session_with_nvim(session_name, project_path, existin
 end
 
 local function find_git_projects(workspace_path, include_archive)
-  local cache_key = include_archive and "with_archive" or "without_archive"
+  local cache_key = workspace_path .. (include_archive and ":with_archive" or ":without_archive")
   if project_cache[cache_key] then return project_cache[cache_key] end
 
   local expanded = vim.fn.expand(workspace_path)
@@ -199,18 +199,23 @@ function M.open_workspace_popup(workspace, opts)
   }):find()
 end
 
-local function get_session_windows(session_name)
-  local windows = {}
-  for _, line in ipairs(vim.fn.systemlist(string.format('tmux list-windows -t %s -F "#{window_index}: #{window_name}"', vim.fn.shellescape(session_name)))) do
-    local index, name = line:match("^(%d+): (.+)$")
-    if index and name then
-      windows[#windows + 1] = { index = tonumber(index), name = name }
+local function get_all_windows_batched()
+  local windows_by_session = {}
+  for _, line in ipairs(vim.fn.systemlist('tmux list-windows -a -F "#{session_name}|#{window_index}|#{window_name}"')) do
+    local session, index, name = line:match("^([^|]+)|(%d+)|(.+)$")
+    if session and index and name then
+      if not windows_by_session[session] then
+        windows_by_session[session] = {}
+      end
+      local wins = windows_by_session[session]
+      wins[#wins + 1] = { index = tonumber(index), name = name }
     end
   end
-  return windows
+  return windows_by_session
 end
 
 local function get_non_current_tmux_sessions()
+  local windows_by_session = get_all_windows_batched()
   local sessions = {}
   for _, line in ipairs(vim.fn.systemlist('tmux list-sessions -F "#{?session_attached,1,0} #{session_name} #{session_path}"')) do
     local is_current, name, path = line:match("^(%d)%s+(%S+)%s+(.+)$")
@@ -218,7 +223,7 @@ local function get_non_current_tmux_sessions()
       sessions[#sessions + 1] = {
         name = name,
         parent = path:match("([^/]+)/[^/]+$") or "",
-        windows = get_session_windows(name),
+        windows = windows_by_session[name] or {},
       }
     end
   end
@@ -236,22 +241,34 @@ local function build_session_entries(sessions)
     local is_expanded = expanded_sessions[session.name]
     local win_count = #session.windows
 
+    local display_str
+    if win_count > 1 then
+      display_str = string.format("%s/%s: %d windows", session.name, session.parent, win_count)
+    else
+      display_str = session.name .. "/" .. session.parent
+    end
+
     entries[#entries + 1] = {
       type = "session",
       session_name = session.name,
       parent = session.parent,
       window_count = win_count,
       expanded = is_expanded,
+      display_str = display_str,
+      ordinal_str = session.name .. " " .. session.parent,
     }
 
     if win_count > 1 and is_expanded then
       for _, win in ipairs(session.windows) do
+        local win_display = string.format("   %d: %s", win.index, win.name)
         entries[#entries + 1] = {
           type = "window",
           session_name = session.name,
           parent = session.parent,
           window_index = win.index,
           window_name = win.name,
+          display_str = win_display,
+          ordinal_str = session.name .. " " .. session.parent .. " " .. win.name,
         }
       end
     end
@@ -275,16 +292,8 @@ local function create_session_finder(sessions)
     entry_maker = function(entry)
       return {
         value = entry,
-        display = function()
-          if entry.type == "window" then
-            return string.format("   %d: %s", entry.window_index, entry.window_name)
-          end
-          if entry.window_count > 1 then
-            return string.format("%s/%s: %d windows", entry.session_name, entry.parent, entry.window_count)
-          end
-          return entry.session_name .. "/" .. entry.parent
-        end,
-        ordinal = entry.session_name .. " " .. entry.parent .. " " .. (entry.window_name or ""),
+        display = entry.display_str,
+        ordinal = entry.ordinal_str,
       }
     end
   }
@@ -351,19 +360,20 @@ function M.tmux_sessions(opts)
       map("i", "<C-c>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
         local any_expanded = false
+        local multi_window_sessions = {}
         for _, session in ipairs(sessions) do
-          if #session.windows > 1 and expanded_sessions[session.name] then
-            any_expanded = true
-            break
+          if #session.windows > 1 then
+            multi_window_sessions[#multi_window_sessions + 1] = session.name
+            if expanded_sessions[session.name] then
+              any_expanded = true
+            end
           end
         end
         if any_expanded then
           expanded_sessions = {}
         else
-          for _, session in ipairs(sessions) do
-            if #session.windows > 1 then
-              expanded_sessions[session.name] = true
-            end
+          for _, name in ipairs(multi_window_sessions) do
+            expanded_sessions[name] = true
           end
         end
         picker:refresh(create_session_finder(sessions), { reset_prompt = false })
