@@ -320,11 +320,16 @@ function M.tmux_sessions(opts)
   end
 
   expanded_sessions = {}
-  local sessions = get_non_current_tmux_sessions()
+  local state = { sessions = get_non_current_tmux_sessions() }
+
+  local function refresh_state(prompt_bufnr)
+    state.sessions = get_non_current_tmux_sessions()
+    refresh_picker(prompt_bufnr, state.sessions)
+  end
 
   pickers.new(apply_theme(opts), {
     prompt_title = "Switch Tmux Session",
-    finder = create_session_finder(sessions),
+    finder = create_session_finder(state.sessions),
     sorter = conf.generic_sorter({}),
     attach_mappings = function(prompt_bufnr, map)
       actions.select_default:replace(function()
@@ -350,7 +355,7 @@ function M.tmux_sessions(opts)
             return
           end
           local picker = action_state.get_current_picker(prompt_bufnr)
-          picker:refresh(create_session_finder(sessions), { reset_prompt = false })
+          picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
         end
       end
 
@@ -361,7 +366,7 @@ function M.tmux_sessions(opts)
         local picker = action_state.get_current_picker(prompt_bufnr)
         local any_expanded = false
         local multi_window_sessions = {}
-        for _, session in ipairs(sessions) do
+        for _, session in ipairs(state.sessions) do
           if #session.windows > 1 then
             multi_window_sessions[#multi_window_sessions + 1] = session.name
             if expanded_sessions[session.name] then
@@ -376,7 +381,7 @@ function M.tmux_sessions(opts)
             expanded_sessions[name] = true
           end
         end
-        picker:refresh(create_session_finder(sessions), { reset_prompt = false })
+        picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
       end)
 
       map("i", "<C-d>", function()
@@ -398,7 +403,7 @@ function M.tmux_sessions(opts)
         end
 
         local function refresh()
-          refresh_picker(prompt_bufnr, get_non_current_tmux_sessions())
+          refresh_state(prompt_bufnr)
         end
 
         local session_count = 0
