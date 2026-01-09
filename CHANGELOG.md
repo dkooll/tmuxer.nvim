@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.7.0](https://github.com/dkooll/tmuxer.nvim/compare/v1.6.0...v1.7.0) (2026-01-09)
+
+
+### Features
+
+* add Ctrl-c to toggle all session windows ([#20](https://github.com/dkooll/tmuxer.nvim/issues/20)) ([f38501d](https://github.com/dkooll/tmuxer.nvim/commit/f38501da3ee377399bb230540ca3471f764fc92e))
+* batch tmux queries and fix stale session state after deletions ([#22](https://github.com/dkooll/tmuxer.nvim/issues/22)) ([87e0e96](https://github.com/dkooll/tmuxer.nvim/commit/87e0e96beca725434e4949f25a549efbaaa082c5))
+
+
+### Bug Fixes
+
+* preserve window order after deletion ([ec0f375](https://github.com/dkooll/tmuxer.nvim/commit/ec0f375f21df068016ca8c0b424569b6babc142a))
+
 ## [1.8.0](https://github.com/dkooll/tmuxer.nvim/compare/v1.7.0...v1.8.0) (2026-01-02)
 
 
