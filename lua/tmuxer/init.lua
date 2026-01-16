@@ -8,6 +8,7 @@ local action_state = require('telescope.actions.state')
 
 local project_cache = {}
 local expanded_sessions = {}
+local expanded_windows = {}
 local has_fd = vim.fn.executable('fd') == 1
 
 M.config = {
@@ -199,7 +200,24 @@ function M.open_workspace_popup(workspace, opts)
   }):find()
 end
 
+local function get_all_panes_batched()
+  local panes_by_window = {}
+  for _, line in ipairs(vim.fn.systemlist('tmux list-panes -a -F "#{session_name}|#{window_index}|#{pane_index}|#{pane_current_command}"')) do
+    local session, win_idx, pane_idx, cmd = line:match("^([^|]+)|(%d+)|(%d+)|(.+)$")
+    if session and win_idx and pane_idx and cmd then
+      local key = session .. ":" .. win_idx
+      if not panes_by_window[key] then
+        panes_by_window[key] = {}
+      end
+      local panes = panes_by_window[key]
+      panes[#panes + 1] = { index = tonumber(pane_idx), command = cmd }
+    end
+  end
+  return panes_by_window
+end
+
 local function get_all_windows_batched()
+  local panes_by_window = get_all_panes_batched()
   local windows_by_session = {}
   for _, line in ipairs(vim.fn.systemlist('tmux list-windows -a -F "#{session_name}|#{window_index}|#{window_name}"')) do
     local session, index, name = line:match("^([^|]+)|(%d+)|(.+)$")
@@ -208,7 +226,12 @@ local function get_all_windows_batched()
         windows_by_session[session] = {}
       end
       local wins = windows_by_session[session]
-      wins[#wins + 1] = { index = tonumber(index), name = name }
+      local key = session .. ":" .. index
+      wins[#wins + 1] = {
+        index = tonumber(index),
+        name = name,
+        panes = panes_by_window[key] or {},
+      }
     end
   end
   return windows_by_session
@@ -259,17 +282,53 @@ local function build_session_entries(sessions)
     if is_expanded then
       for j, win in ipairs(session.windows) do
         local win_is_last = (j == win_count)
+        local win_key = session.name .. ":" .. win.index
+        local win_is_expanded = expanded_windows[win_key]
+        local pane_count = #win.panes
+
+        local win_indicator = ""
+        if pane_count > 1 then
+          win_indicator = win_is_expanded and "─" or "+"
+        end
+
         local win_branch = win_is_last and "└─› " or "├─› "
-        local win_display = string.format("  %s%d: %s", win_branch, win.index, win.name)
+        local pane_suffix = pane_count > 1 and string.format(": %d panes", pane_count) or ""
+        local win_display = string.format("  %s%s%d: %s%s", win_branch, win_indicator, win.index, win.name, pane_suffix)
+
         entries[#entries + 1] = {
           type = "window",
           session_name = session.name,
           parent = session.parent,
           window_index = win.index,
           window_name = win.name,
+          pane_count = pane_count,
+          panes = win.panes,
+          expanded = win_is_expanded,
+          is_last = win_is_last,
           display_str = win_display,
           ordinal_str = session.name .. " " .. session.parent .. " " .. win.name,
         }
+
+        if win_is_expanded and pane_count > 1 then
+          for k, pane in ipairs(win.panes) do
+            local pane_is_last = (k == pane_count)
+            local pane_prefix = win_is_last and "      " or "  │   "
+            local pane_branch = pane_is_last and "└─› " or "├─› "
+            local pane_display = string.format("%s%s%d: %s", pane_prefix, pane_branch, pane.index, pane.command)
+
+            entries[#entries + 1] = {
+              type = "pane",
+              session_name = session.name,
+              parent = session.parent,
+              window_index = win.index,
+              window_name = win.name,
+              pane_index = pane.index,
+              pane_command = pane.command,
+              display_str = pane_display,
+              ordinal_str = session.name .. " " .. session.parent .. " " .. win.name .. " " .. pane.command,
+            }
+          end
+        end
       end
     end
   end
@@ -280,6 +339,19 @@ local function switch_to_window(session_name, window_index)
   vim.fn.jobstart({ "tmux", "select-window", "-t", string.format("%s:%d", session_name, window_index) }, {
     on_exit = function()
       vim.fn.jobstart({ "tmux", "switch-client", "-t", session_name })
+    end
+  })
+end
+
+local function switch_to_pane(session_name, window_index, pane_index)
+  vim.fn.jobstart({ "tmux", "select-window", "-t", string.format("%s:%d", session_name, window_index) }, {
+    on_exit = function()
+      vim.fn.jobstart({ "tmux", "select-pane", "-t", string.format("%s:%d.%d", session_name, window_index, pane_index) },
+        {
+          on_exit = function()
+            vim.fn.jobstart({ "tmux", "switch-client", "-t", session_name })
+          end
+        })
     end
   })
 end
@@ -320,6 +392,7 @@ function M.tmux_sessions(opts)
   end
 
   expanded_sessions = {}
+  expanded_windows = {}
   local state = { sessions = get_non_current_tmux_sessions() }
 
   local function refresh_state(prompt_bufnr)
@@ -335,7 +408,9 @@ function M.tmux_sessions(opts)
       actions.select_default:replace(function()
         local entry = action_state.get_selected_entry().value
         actions.close(prompt_bufnr)
-        if entry.type == "window" then
+        if entry.type == "pane" then
+          switch_to_pane(entry.session_name, entry.window_index, entry.pane_index)
+        elseif entry.type == "window" then
           switch_to_window(entry.session_name, entry.window_index)
         else
           switch_tmux_session(entry.session_name)
@@ -346,6 +421,8 @@ function M.tmux_sessions(opts)
         local sel = action_state.get_selected_entry()
         if not sel then return end
         local entry = sel.value
+        local picker = action_state.get_current_picker(prompt_bufnr)
+
         if entry.type == "session" then
           if expand and not entry.expanded then
             expanded_sessions[entry.session_name] = true
@@ -354,7 +431,16 @@ function M.tmux_sessions(opts)
           else
             return
           end
-          local picker = action_state.get_current_picker(prompt_bufnr)
+          picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
+        elseif entry.type == "window" and entry.pane_count > 1 then
+          local win_key = entry.session_name .. ":" .. entry.window_index
+          if expand and not entry.expanded then
+            expanded_windows[win_key] = true
+          elseif not expand and entry.expanded then
+            expanded_windows[win_key] = nil
+          else
+            return
+          end
           picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
         end
       end
@@ -367,6 +453,7 @@ function M.tmux_sessions(opts)
         local any_expanded = next(expanded_sessions) ~= nil
         if any_expanded then
           expanded_sessions = {}
+          expanded_windows = {}
         else
           for _, session in ipairs(state.sessions) do
             expanded_sessions[session.name] = true
