@@ -291,9 +291,9 @@ local function build_session_entries(sessions)
           win_indicator = win_is_expanded and "─" or "+"
         end
 
-        local win_branch = win_is_last and "└─› " or "├─› "
         local pane_suffix = pane_count > 1 and string.format(": %d panes", pane_count) or ""
-        local win_display = string.format("  %s%s%d: %s%s", win_branch, win_indicator, win.index, win.name, pane_suffix)
+        local win_prefix = win_indicator ~= "" and (win_indicator .. " ") or ""
+        local win_display = string.format("  %s%d: %s%s", win_prefix, win.index, win.name, pane_suffix)
 
         entries[#entries + 1] = {
           type = "window",
@@ -310,11 +310,8 @@ local function build_session_entries(sessions)
         }
 
         if win_is_expanded and pane_count > 1 then
-          for k, pane in ipairs(win.panes) do
-            local pane_is_last = (k == pane_count)
-            local pane_prefix = win_is_last and "      " or "  │   "
-            local pane_branch = pane_is_last and "└─› " or "├─› "
-            local pane_display = string.format("%s%s%d: %s", pane_prefix, pane_branch, pane.index, pane.command)
+          for _, pane in ipairs(win.panes) do
+            local pane_display = string.format("    %d: %s", pane.index, pane.command)
 
             entries[#entries + 1] = {
               type = "pane",
