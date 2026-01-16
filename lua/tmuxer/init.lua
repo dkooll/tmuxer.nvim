@@ -459,67 +459,36 @@ function M.tmux_sessions(opts)
       map("i", "<Right>", function() toggle_expand(true) end)
       map("i", "<Left>", function() toggle_expand(false) end)
 
-      -- Ctrl-e: toggle all sessions (show windows only, no panes)
-      map("i", "<C-e>", function()
+      local function toggle_all(mode)
         local picker = action_state.get_current_picker(prompt_bufnr)
-        local any_expanded = next(expanded_sessions) ~= nil
-        if any_expanded then
-          expanded_sessions = {}
-          expanded_windows = {}
-        else
-          expanded_windows = {}
-          for _, session in ipairs(state.sessions) do
-            expanded_sessions[session.name] = true
-          end
-        end
-        picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
-      end)
-
-      -- Ctrl-p: toggle panes only (sessions with multi-pane windows, panes expanded)
-      map("i", "<C-p>", function()
-        local picker = action_state.get_current_picker(prompt_bufnr)
-        local any_expanded = next(expanded_windows) ~= nil
-        if any_expanded then
+        local check = mode == "panes" and expanded_windows or expanded_sessions
+        if next(check) ~= nil then
           expanded_sessions = {}
           expanded_windows = {}
         else
           expanded_sessions = {}
           expanded_windows = {}
           for _, session in ipairs(state.sessions) do
-            local has_multi_pane = false
+            local dominated_pane = false
             for _, win in ipairs(session.windows) do
               if #win.panes > 1 then
-                has_multi_pane = true
-                expanded_windows[session.name .. ":" .. win.index] = true
+                if mode == "panes" or mode == "all" then
+                  expanded_windows[session.name .. ":" .. win.index] = true
+                  dominated_pane = true
+                end
               end
             end
-            if has_multi_pane then
+            if mode == "all" or mode == "sessions" or (mode == "panes" and dominated_pane) then
               expanded_sessions[session.name] = true
             end
           end
         end
         picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
-      end)
+      end
 
-      -- Ctrl-x: toggle everything (all sessions + all panes)
-      map("i", "<C-x>", function()
-        local picker = action_state.get_current_picker(prompt_bufnr)
-        local any_expanded = next(expanded_sessions) ~= nil
-        if any_expanded then
-          expanded_sessions = {}
-          expanded_windows = {}
-        else
-          for _, session in ipairs(state.sessions) do
-            expanded_sessions[session.name] = true
-            for _, win in ipairs(session.windows) do
-              if #win.panes > 1 then
-                expanded_windows[session.name .. ":" .. win.index] = true
-              end
-            end
-          end
-        end
-        picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
-      end)
+      map("i", "<C-e>", function() toggle_all("sessions") end)
+      map("i", "<C-p>", function() toggle_all("panes") end)
+      map("i", "<C-x>", function() toggle_all("all") end)
 
       map("i", "<C-d>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
