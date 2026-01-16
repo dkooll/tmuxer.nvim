@@ -152,9 +152,7 @@ Session names are generated from project names (non-alphanumeric characters repl
 
 If you want to use different neovim configurations or versions, you can override the default command within the config
 
-```lua
-nvim_alias = "NVIM_APPNAME=nvim-dev nvim",
-```
+`nvim_alias = "NVIM_APPNAME=nvim-dev nvim"`
 
 ## Contributors
 
