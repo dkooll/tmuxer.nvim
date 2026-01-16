@@ -8,7 +8,6 @@ local action_state = require('telescope.actions.state')
 
 local project_cache = {}
 local expanded_sessions = {}
-local all_collapsed = false
 local has_fd = vim.fn.executable('fd') == 1
 
 M.config = {
@@ -238,31 +237,17 @@ end
 
 local function build_session_entries(sessions)
   local entries = {}
-  local total_sessions = #sessions
 
-  -- Add root header
-  local root_indicator = all_collapsed and "-" or "+"
-  entries[#entries + 1] = {
-    type = "header",
-    display_str = string.format("%s Sessions (%d)", root_indicator, total_sessions),
-    ordinal_str = "sessions",
-  }
-
-  for i, session in ipairs(sessions) do
+  for _, session in ipairs(sessions) do
     local is_expanded = expanded_sessions[session.name]
     local win_count = #session.windows
-    local is_last = (i == total_sessions)
 
-    -- Tree structure prefixes
-    local tree_prefix = ""
-    if all_collapsed then
-      tree_prefix = is_last and "└─▸ " or "├─▸ "
-    end
-
-    -- Session indicator: + means expandable (has windows to show)
-    local session_indicator = "+"
+    -- Session indicator: - when expanded, + when collapsed
+    local session_indicator = is_expanded and "-" or "+"
     local window_suffix = win_count == 1 and ": 1 window" or string.format(": %d windows", win_count)
-    local display_str = string.format("%s%s %s/%s%s", tree_prefix, session_indicator, session.name, session.parent, window_suffix)
+    local arrow = " ›"
+    local display_str = string.format("%s %s/%s%s%s", session_indicator, session.name, session.parent, window_suffix,
+      arrow)
 
     entries[#entries + 1] = {
       type = "session",
@@ -272,15 +257,13 @@ local function build_session_entries(sessions)
       expanded = is_expanded,
       display_str = display_str,
       ordinal_str = session.name .. " " .. session.parent,
-      is_last = is_last,
     }
 
-    if win_count > 1 and is_expanded then
+    if is_expanded then
       for j, win in ipairs(session.windows) do
         local win_is_last = (j == win_count)
-        local win_tree_prefix = all_collapsed and (is_last and "    " or "│   ") or "   "
         local win_branch = win_is_last and "└─ " or "├─ "
-        local win_display = string.format("%s%s%d: %s", win_tree_prefix, win_branch, win.index, win.name)
+        local win_display = string.format("  %s%d: %s", win_branch, win.index, win.name)
         entries[#entries + 1] = {
           type = "window",
           session_name = session.name,
@@ -340,7 +323,6 @@ function M.tmux_sessions(opts)
   end
 
   expanded_sessions = {}
-  all_collapsed = false
   local state = { sessions = get_non_current_tmux_sessions() }
 
   local function refresh_state(prompt_bufnr)
@@ -355,9 +337,6 @@ function M.tmux_sessions(opts)
     attach_mappings = function(prompt_bufnr, map)
       actions.select_default:replace(function()
         local entry = action_state.get_selected_entry().value
-        if entry.type == "header" then
-          return -- Do nothing when header is selected
-        end
         actions.close(prompt_bufnr)
         if entry.type == "window" then
           switch_to_window(entry.session_name, entry.window_index)
@@ -370,7 +349,7 @@ function M.tmux_sessions(opts)
         local sel = action_state.get_selected_entry()
         if not sel then return end
         local entry = sel.value
-        if entry.type == "session" and entry.window_count > 1 then
+        if entry.type == "session" then
           if expand and not entry.expanded then
             expanded_sessions[entry.session_name] = true
           elseif not expand and entry.expanded then
@@ -388,11 +367,19 @@ function M.tmux_sessions(opts)
 
       map("i", "<C-c>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
-        -- Toggle the collapsed state
-        all_collapsed = not all_collapsed
-        -- When collapsing, clear expanded sessions; when expanding, keep them
-        if all_collapsed then
+        local any_expanded = false
+        for _, session in ipairs(state.sessions) do
+          if expanded_sessions[session.name] then
+            any_expanded = true
+            break
+          end
+        end
+        if any_expanded then
           expanded_sessions = {}
+        else
+          for _, session in ipairs(state.sessions) do
+            expanded_sessions[session.name] = true
+          end
         end
         picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
       end)
