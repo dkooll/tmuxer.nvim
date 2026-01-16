@@ -459,7 +459,8 @@ function M.tmux_sessions(opts)
       map("i", "<Right>", function() toggle_expand(true) end)
       map("i", "<Left>", function() toggle_expand(false) end)
 
-      map("i", "<C-s>", function()
+      -- Ctrl-e: toggle all sessions (expand/collapse windows)
+      map("i", "<C-e>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
         local any_expanded = next(expanded_sessions) ~= nil
         if any_expanded then
@@ -473,7 +474,8 @@ function M.tmux_sessions(opts)
         picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
       end)
 
-      map("i", "<C-w>", function()
+      -- Ctrl-p: toggle all panes (only windows with multiple panes)
+      map("i", "<C-p>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
         local any_win_expanded = next(expanded_windows) ~= nil
         if any_win_expanded then
@@ -492,7 +494,8 @@ function M.tmux_sessions(opts)
         picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
       end)
 
-      map("i", "<C-a>", function()
+      -- Ctrl-x: toggle all (sessions + panes)
+      map("i", "<C-x>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
         local any_expanded = next(expanded_sessions) ~= nil
         if any_expanded then
