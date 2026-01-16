@@ -417,28 +417,12 @@ function M.tmux_sessions(opts)
         end
       end)
 
-      local function find_entry_row(picker, entry)
-        local manager = picker.manager
-        for i = 1, manager:num_results() do
-          local e = manager:get_entry(i)
-          if e and e.value and e.value.type == entry.type then
-            if entry.type == "session" and e.value.session_name == entry.session_name then
-              return i
-            elseif entry.type == "window" and e.value.session_name == entry.session_name and e.value.window_index == entry.window_index then
-              return i
-            elseif entry.type == "pane" and e.value.session_name == entry.session_name and e.value.window_index == entry.window_index and e.value.pane_index == entry.pane_index then
-              return i
-            end
-          end
-        end
-        return 1
-      end
-
       local function toggle_expand(expand)
         local sel = action_state.get_selected_entry()
         if not sel then return end
         local entry = sel.value
         local picker = action_state.get_current_picker(prompt_bufnr)
+        local current_row = picker:get_selection_row()
 
         if entry.type == "session" then
           if expand and not entry.expanded then
@@ -450,8 +434,7 @@ function M.tmux_sessions(opts)
           end
           picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
           vim.schedule(function()
-            local row = find_entry_row(picker, entry)
-            picker:set_selection(row)
+            picker:set_selection(current_row)
           end)
         elseif entry.type == "window" and entry.pane_count > 1 then
           local win_key = entry.session_name .. ":" .. entry.window_index
@@ -464,8 +447,7 @@ function M.tmux_sessions(opts)
           end
           picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
           vim.schedule(function()
-            local row = find_entry_row(picker, entry)
-            picker:set_selection(row)
+            picker:set_selection(current_row)
           end)
         end
       end
