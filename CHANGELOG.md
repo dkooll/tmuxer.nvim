@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/dkooll/tmuxer.nvim/compare/v1.8.0...v1.9.0) (2026-01-16)
+
+
+### Features
+
+* improve pane layout ([#25](https://github.com/dkooll/tmuxer.nvim/issues/25)) ([a3e5ce0](https://github.com/dkooll/tmuxer.nvim/commit/a3e5ce04cf647f6a47032da7f7eb48b8518773ca))
+
 ## [1.8.0](https://github.com/dkooll/tmuxer.nvim/compare/v1.7.0...v1.8.0) (2026-01-02)
 
 
