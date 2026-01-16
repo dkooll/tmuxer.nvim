@@ -494,20 +494,25 @@ function M.tmux_sessions(opts)
         picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
       end)
 
-      -- Ctrl-x: toggle all (sessions + panes)
+      -- Ctrl-x: toggle all (sessions with panes expanded)
       map("i", "<C-x>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
-        local any_expanded = next(expanded_sessions) ~= nil
+        local any_expanded = next(expanded_sessions) ~= nil or next(expanded_windows) ~= nil
         if any_expanded then
           expanded_sessions = {}
           expanded_windows = {}
         else
+          -- Only expand sessions that have windows with multiple panes
           for _, session in ipairs(state.sessions) do
-            expanded_sessions[session.name] = true
+            local has_multi_pane_window = false
             for _, win in ipairs(session.windows) do
               if #win.panes > 1 then
+                has_multi_pane_window = true
                 expanded_windows[session.name .. ":" .. win.index] = true
               end
+            end
+            if has_multi_pane_window then
+              expanded_sessions[session.name] = true
             end
           end
         end
