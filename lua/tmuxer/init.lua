@@ -459,7 +459,7 @@ function M.tmux_sessions(opts)
       map("i", "<Right>", function() toggle_expand(true) end)
       map("i", "<Left>", function() toggle_expand(false) end)
 
-      map("i", "<C-c>", function()
+      map("i", "<C-s>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
         local any_expanded = next(expanded_sessions) ~= nil
         if any_expanded then
@@ -468,6 +468,44 @@ function M.tmux_sessions(opts)
         else
           for _, session in ipairs(state.sessions) do
             expanded_sessions[session.name] = true
+          end
+        end
+        picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
+      end)
+
+      map("i", "<C-w>", function()
+        local picker = action_state.get_current_picker(prompt_bufnr)
+        local any_win_expanded = next(expanded_windows) ~= nil
+        if any_win_expanded then
+          expanded_windows = {}
+        else
+          for _, session in ipairs(state.sessions) do
+            if expanded_sessions[session.name] then
+              for _, win in ipairs(session.windows) do
+                if #win.panes > 1 then
+                  expanded_windows[session.name .. ":" .. win.index] = true
+                end
+              end
+            end
+          end
+        end
+        picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
+      end)
+
+      map("i", "<C-a>", function()
+        local picker = action_state.get_current_picker(prompt_bufnr)
+        local any_expanded = next(expanded_sessions) ~= nil
+        if any_expanded then
+          expanded_sessions = {}
+          expanded_windows = {}
+        else
+          for _, session in ipairs(state.sessions) do
+            expanded_sessions[session.name] = true
+            for _, win in ipairs(session.windows) do
+              if #win.panes > 1 then
+                expanded_windows[session.name .. ":" .. win.index] = true
+              end
+            end
           end
         end
         picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
