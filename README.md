@@ -14,7 +14,9 @@ Start Neovim instances within tmux sessions
 
 List and switch between existing tmux sessions
 
-View session windows as sub-items and switch directly to a specific window
+View sessions, windows, and panes in a tree structure
+
+Switch directly to a specific session, window, or pane
 
 Multi-select support for batch operations
 
@@ -118,11 +120,25 @@ Opens a Telescope picker to browse Git projects within configured workspaces and
 
 `:TmuxSwitchSession`
 
-Lists all non-attached tmux sessions with their windows as sub-items (for sessions with multiple windows). Select a session to switch to it, or select a specific window to jump directly to that window. Use `<C-d>` to kill sessions or windows.
+Lists all non-attached tmux sessions in a tree view. Sessions can be expanded to show windows, and windows with multiple panes can be expanded to show panes. Select any item to switch to it.
 
 `:TmuxToggleArchive`
 
 Toggles visibility of projects inside `archive` folders
+
+## Session Picker Keybindings
+
+`<Right>/<Left>` - Expand/collapse current item
+
+`<C-e>` - Toggle all sessions (windows)
+
+`<C-p>` - Toggle panes only
+
+`<C-x>` - Toggle everything (sessions + panes)
+
+`<C-d>` - Kill selected session(s) or window(s)
+
+`<Tab>` - Multi-select
 
 ## Notes
 
@@ -134,17 +150,9 @@ Excludes folders named `archive` by default (toggle with `:TmuxToggleArchive`)
 
 Session names are generated from project names (non-alphanumeric characters replaced with underscores)
 
-Sessions with multiple windows show windows as sub-items in the picker
-
-Use `<C-d>` on a session to kill the entire session, or on a window to kill just that window
-
-Multi-select with `<Tab>` works for both sessions and windows
-
 If you want to use different neovim configurations or versions, you can override the default command within the config
 
-```lua
-nvim_alias = "NVIM_APPNAME=nvim-dev nvim",
-```
+`nvim_alias = "NVIM_APPNAME=nvim-dev nvim"`
 
 ## Contributors
 
