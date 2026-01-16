@@ -433,9 +433,11 @@ function M.tmux_sessions(opts)
             return
           end
           picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
-          vim.schedule(function()
-            picker:set_selection(current_row)
-          end)
+          vim.defer_fn(function()
+            if vim.api.nvim_buf_is_valid(prompt_bufnr) then
+              picker:set_selection(current_row)
+            end
+          end, 10)
         elseif entry.type == "window" and entry.pane_count > 1 then
           local win_key = entry.session_name .. ":" .. entry.window_index
           if expand and not entry.expanded then
@@ -446,9 +448,11 @@ function M.tmux_sessions(opts)
             return
           end
           picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
-          vim.schedule(function()
-            picker:set_selection(current_row)
-          end)
+          vim.defer_fn(function()
+            if vim.api.nvim_buf_is_valid(prompt_bufnr) then
+              picker:set_selection(current_row)
+            end
+          end, 10)
         end
       end
 
