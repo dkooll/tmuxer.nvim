@@ -262,7 +262,7 @@ local function build_session_entries(sessions)
     if is_expanded then
       for j, win in ipairs(session.windows) do
         local win_is_last = (j == win_count)
-        local win_branch = win_is_last and "└─ " or "├─ "
+        local win_branch = win_is_last and "└─› " or "├─› "
         local win_display = string.format("  %s%d: %s", win_branch, win.index, win.name)
         entries[#entries + 1] = {
           type = "window",
@@ -287,8 +287,48 @@ local function switch_to_window(session_name, window_index)
   })
 end
 
-local function create_session_finder(sessions)
+local function has_any_expanded()
+  return next(expanded_sessions) ~= nil
+end
+
+local function filter_entries_with_parents(entries, prompt)
+  if not prompt or prompt == "" then
+    return entries
+  end
+
+  local pattern = prompt:lower()
+  local filtered = {}
+  local sessions_to_include = {}
+  local session_entries = {}
+
+  -- Single pass: collect sessions and check window matches
+  for _, entry in ipairs(entries) do
+    if entry.type == "session" then
+      session_entries[entry.session_name] = entry
+      if entry.ordinal_str:lower():find(pattern, 1, true) then
+        filtered[#filtered + 1] = entry
+        sessions_to_include[entry.session_name] = true
+      end
+    elseif entry.type == "window" then
+      if entry.ordinal_str:lower():find(pattern, 1, true) then
+        -- Add parent session if not already added
+        if not sessions_to_include[entry.session_name] then
+          sessions_to_include[entry.session_name] = true
+          filtered[#filtered + 1] = session_entries[entry.session_name]
+        end
+        filtered[#filtered + 1] = entry
+      end
+    end
+  end
+
+  return filtered
+end
+
+local function create_session_finder(sessions, prompt, use_filter)
   local entries = build_session_entries(sessions)
+  if use_filter and prompt and prompt ~= "" then
+    entries = filter_entries_with_parents(entries, prompt)
+  end
 
   return finders.new_table {
     results = entries,
@@ -310,7 +350,8 @@ local function refresh_picker(prompt_bufnr, sessions)
   else
     vim.schedule(function()
       if vim.api.nvim_buf_is_valid(prompt_bufnr) then
-        picker:refresh(create_session_finder(sessions), { reset_prompt = true })
+        local prompt = picker:_get_prompt()
+        picker:refresh(create_session_finder(sessions, prompt, has_any_expanded()), { reset_prompt = true })
       end
     end)
   end
@@ -330,11 +371,32 @@ function M.tmux_sessions(opts)
     refresh_picker(prompt_bufnr, state.sessions)
   end
 
+  local debounce_timer = nil
+
   pickers.new(apply_theme(opts), {
     prompt_title = "Switch Tmux Session",
-    finder = create_session_finder(state.sessions),
+    finder = create_session_finder(state.sessions, "", false),
     sorter = conf.generic_sorter({}),
     attach_mappings = function(prompt_bufnr, map)
+      -- Only use custom filtering when sessions are expanded
+      vim.api.nvim_create_autocmd("TextChangedI", {
+        buffer = prompt_bufnr,
+        callback = function()
+          if not has_any_expanded() then return end
+          if debounce_timer then
+            vim.fn.timer_stop(debounce_timer)
+          end
+          debounce_timer = vim.fn.timer_start(50, function()
+            vim.schedule(function()
+              if vim.api.nvim_buf_is_valid(prompt_bufnr) then
+                local picker = action_state.get_current_picker(prompt_bufnr)
+                local prompt = picker:_get_prompt()
+                picker:refresh(create_session_finder(state.sessions, prompt, true), { reset_prompt = false })
+              end
+            end)
+          end)
+        end,
+      })
       actions.select_default:replace(function()
         local entry = action_state.get_selected_entry().value
         actions.close(prompt_bufnr)
@@ -358,7 +420,8 @@ function M.tmux_sessions(opts)
             return
           end
           local picker = action_state.get_current_picker(prompt_bufnr)
-          picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
+          local prompt = picker:_get_prompt()
+          picker:refresh(create_session_finder(state.sessions, prompt, has_any_expanded()), { reset_prompt = false })
         end
       end
 
@@ -367,13 +430,7 @@ function M.tmux_sessions(opts)
 
       map("i", "<C-c>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
-        local any_expanded = false
-        for _, session in ipairs(state.sessions) do
-          if expanded_sessions[session.name] then
-            any_expanded = true
-            break
-          end
-        end
+        local any_expanded = has_any_expanded()
         if any_expanded then
           expanded_sessions = {}
         else
@@ -381,7 +438,8 @@ function M.tmux_sessions(opts)
             expanded_sessions[session.name] = true
           end
         end
-        picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
+        local prompt = picker:_get_prompt()
+        picker:refresh(create_session_finder(state.sessions, prompt, has_any_expanded()), { reset_prompt = false })
       end)
 
       map("i", "<C-d>", function()
