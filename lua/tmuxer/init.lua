@@ -242,12 +242,9 @@ local function build_session_entries(sessions)
     local is_expanded = expanded_sessions[session.name]
     local win_count = #session.windows
 
-    -- Session indicator: - when expanded, + when collapsed
-    local session_indicator = is_expanded and "-" or "+"
+    local session_indicator = is_expanded and "─" or "+"
     local window_suffix = win_count == 1 and ": 1 window" or string.format(": %d windows", win_count)
-    local arrow = " ›"
-    local display_str = string.format("%s %s/%s%s%s", session_indicator, session.name, session.parent, window_suffix,
-      arrow)
+    local display_str = string.format("%s %s/%s%s", session_indicator, session.name, session.parent, window_suffix)
 
     entries[#entries + 1] = {
       type = "session",
