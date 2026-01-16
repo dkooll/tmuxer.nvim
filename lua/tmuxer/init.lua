@@ -3,6 +3,7 @@ local M = {}
 local pickers = require('telescope.pickers')
 local finders = require('telescope.finders')
 local conf = require('telescope.config').values
+local sorters = require('telescope.sorters')
 local actions = require('telescope.actions')
 local action_state = require('telescope.actions.state')
 
@@ -10,6 +11,7 @@ local project_cache = {}
 local expanded_sessions = {}
 local expanded_windows = {}
 local has_fd = vim.fn.executable('fd') == 1
+local lower = string.lower
 
 M.config = {
   nvim_alias = "nvim",
@@ -59,6 +61,36 @@ local function get_tmux_session_name_set()
     if name ~= "" then sessions[name] = true end
   end
   return sessions
+end
+
+local function create_stable_sorter()
+  return sorters.Sorter:new({
+    scoring_function = function(_, prompt, entry)
+      local order_score = entry.order or 0
+      if not prompt or prompt == "" then return order_score end
+      if entry.ordinal and lower(entry.ordinal):find(lower(prompt), 1, true) then
+        return order_score
+      end
+      return -1
+    end,
+    highlighter = function(_, prompt, display)
+      if not prompt or prompt == "" then return {} end
+
+      local highlights = {}
+      local disp = lower(display)
+      local p = lower(prompt)
+      local start = 1
+
+      while true do
+        local s, e = disp:find(p, start, true)
+        if not s then break end
+        highlights[#highlights + 1] = { start = s, finish = e }
+        start = e + 1
+      end
+
+      return highlights
+    end,
+  })
 end
 
 local function create_tmux_session_with_nvim(session_name, project_path, existing_sessions, callback)
@@ -260,6 +292,7 @@ end
 
 local function build_session_entries(sessions)
   local entries = {}
+  local order = 0
 
   for _, session in ipairs(sessions) do
     local is_expanded = expanded_sessions[session.name]
@@ -269,6 +302,7 @@ local function build_session_entries(sessions)
     local window_suffix = win_count == 1 and ": 1 window" or string.format(": %d windows", win_count)
     local display_str = string.format("%s %s/%s%s", session_indicator, session.name, session.parent, window_suffix)
 
+    order = order + 1
     entries[#entries + 1] = {
       type = "session",
       session_name = session.name,
@@ -277,6 +311,7 @@ local function build_session_entries(sessions)
       expanded = is_expanded,
       display_str = display_str,
       ordinal_str = session.name .. " " .. session.parent,
+      order = order,
     }
 
     if is_expanded then
@@ -291,10 +326,11 @@ local function build_session_entries(sessions)
           win_indicator = win_is_expanded and "─" or "+"
         end
 
+        local win_branch = win_is_last and "└─› " or "├─› "
         local pane_suffix = pane_count > 1 and string.format(": %d panes", pane_count) or ""
-        local win_prefix = win_indicator ~= "" and (win_indicator .. " ") or ""
-        local win_display = string.format("  %s%d: %s%s", win_prefix, win.index, win.name, pane_suffix)
+        local win_display = string.format("  %s%s%d: %s%s", win_branch, win_indicator, win.index, win.name, pane_suffix)
 
+        order = order + 1
         entries[#entries + 1] = {
           type = "window",
           session_name = session.name,
@@ -307,12 +343,17 @@ local function build_session_entries(sessions)
           is_last = win_is_last,
           display_str = win_display,
           ordinal_str = session.name .. " " .. session.parent .. " " .. win.name,
+          order = order,
         }
 
         if win_is_expanded and pane_count > 1 then
-          for _, pane in ipairs(win.panes) do
-            local pane_display = string.format("    %d: %s", pane.index, pane.command)
+          for k, pane in ipairs(win.panes) do
+            local pane_is_last = (k == pane_count)
+            local pane_prefix = win_is_last and "      " or "  │   "
+            local pane_branch = pane_is_last and "└─› " or "├─› "
+            local pane_display = string.format("%s%s%d: %s", pane_prefix, pane_branch, pane.index, pane.command)
 
+            order = order + 1
             entries[#entries + 1] = {
               type = "pane",
               session_name = session.name,
@@ -323,6 +364,7 @@ local function build_session_entries(sessions)
               pane_command = pane.command,
               display_str = pane_display,
               ordinal_str = session.name .. " " .. session.parent .. " " .. win.name .. " " .. pane.command,
+              order = order,
             }
           end
         end
@@ -400,7 +442,7 @@ function M.tmux_sessions(opts)
   pickers.new(apply_theme(opts), {
     prompt_title = "Switch Tmux Session",
     finder = create_session_finder(state.sessions),
-    sorter = conf.generic_sorter({}),
+    sorter = create_stable_sorter(),
     attach_mappings = function(prompt_bufnr, map)
       actions.select_default:replace(function()
         local entry = action_state.get_selected_entry().value
