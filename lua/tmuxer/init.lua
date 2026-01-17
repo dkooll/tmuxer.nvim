@@ -294,7 +294,7 @@ local function build_session_entries(sessions)
 
         local win_branch = win_is_last and "└─› " or "├─› "
         local pane_suffix = pane_count > 1 and string.format(": %d panes", pane_count) or ""
-        local win_display = string.format("  %s%s%d: %s%s", win_branch, win_indicator, win.index, win.name, pane_suffix)
+        local win_display = string.format("  %s%s%d: %s%s (%s)", win_branch, win_indicator, win.index, win.name, pane_suffix, session.name)
 
         entries[#entries + 1] = {
           type = "window",
@@ -315,7 +315,7 @@ local function build_session_entries(sessions)
             local pane_is_last = (k == pane_count)
             local pane_prefix = win_is_last and "      " or "  │   "
             local pane_branch = pane_is_last and "└─› " or "├─› "
-            local pane_display = string.format("%s%s%d: %s", pane_prefix, pane_branch, pane.index, pane.command)
+            local pane_display = string.format("%s%s%d: %s (%s)", pane_prefix, pane_branch, pane.index, pane.command, session.name)
 
             entries[#entries + 1] = {
               type = "pane",
@@ -418,18 +418,26 @@ function M.tmux_sessions(opts)
         end
       end)
 
+      local function find_entry_index(picker, target_type, session_name, window_index)
+        for i = 1, picker.manager:num_results() do
+          local e = picker.manager:get_entry(i)
+          if e and e.value then
+            local v = e.value
+            if v.type == target_type and v.session_name == session_name then
+              if target_type == "session" or (target_type == "window" and v.window_index == window_index) then
+                return i
+              end
+            end
+          end
+        end
+        return nil
+      end
+
       local function toggle_expand(expand)
         local sel = action_state.get_selected_entry()
         if not sel then return end
         local entry = sel.value
         local picker = action_state.get_current_picker(prompt_bufnr)
-        local function reselect_current()
-          if not picker or not picker.manager then return end
-          local idx = picker.manager:find_entry(entry)
-          if idx then
-            picker:set_selection(picker:get_row(idx))
-          end
-        end
 
         if entry.type == "session" then
           if expand and not entry.expanded then
@@ -442,7 +450,8 @@ function M.tmux_sessions(opts)
           picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
           vim.defer_fn(function()
             if vim.api.nvim_buf_is_valid(prompt_bufnr) then
-              reselect_current()
+              local idx = find_entry_index(picker, "session", entry.session_name)
+              if idx then picker:set_selection(picker:get_row(idx)) end
             end
           end, 10)
         elseif entry.type == "window" and entry.pane_count > 1 then
@@ -457,7 +466,8 @@ function M.tmux_sessions(opts)
           picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
           vim.defer_fn(function()
             if vim.api.nvim_buf_is_valid(prompt_bufnr) then
-              reselect_current()
+              local idx = find_entry_index(picker, "window", entry.session_name, entry.window_index)
+              if idx then picker:set_selection(picker:get_row(idx)) end
             end
           end, 10)
         end
