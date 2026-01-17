@@ -2,6 +2,7 @@ local M = {}
 
 local pickers = require('telescope.pickers')
 local finders = require('telescope.finders')
+local sorters = require('telescope.sorters')
 local conf = require('telescope.config').values
 local actions = require('telescope.actions')
 local action_state = require('telescope.actions.state')
@@ -60,6 +61,7 @@ local function get_tmux_session_name_set()
   end
   return sessions
 end
+
 
 local function create_tmux_session_with_nvim(session_name, project_path, existing_sessions, callback)
   if existing_sessions and existing_sessions[session_name] then
@@ -371,6 +373,38 @@ local function create_session_finder(sessions)
   }
 end
 
+-- Custom sorter that filters but preserves original order
+local function create_preserve_order_sorter()
+  return sorters.new {
+    scoring_function = function(_, prompt, _, entry)
+      if not prompt or prompt == "" then
+        return 1 -- Show all entries with same score
+      end
+
+      local ordinal = entry.ordinal:lower()
+      local search = prompt:lower()
+
+      -- Check if entry matches (simple substring match)
+      if ordinal:find(search, 1, true) then
+        return 1 -- All matches get same score to preserve order
+      end
+
+      return -1 -- Filter out non-matches
+    end,
+    highlighter = function(_, prompt, display)
+      if not prompt or prompt == "" then return {} end
+      local highlights = {}
+      local search = prompt:lower()
+      local display_lower = display:lower()
+      local start_pos = display_lower:find(search, 1, true)
+      if start_pos then
+        table.insert(highlights, { start = start_pos - 1, finish = start_pos + #search - 1 })
+      end
+      return highlights
+    end,
+  }
+end
+
 local function refresh_picker(prompt_bufnr, sessions)
   if not vim.api.nvim_buf_is_valid(prompt_bufnr) then return end
   local picker = action_state.get_current_picker(prompt_bufnr)
@@ -403,7 +437,7 @@ function M.tmux_sessions(opts)
   pickers.new(apply_theme(opts), {
     prompt_title = "Switch Tmux Session",
     finder = create_session_finder(state.sessions),
-    sorter = conf.generic_sorter({}),
+    sorter = create_preserve_order_sorter(),
     attach_mappings = function(prompt_bufnr, map)
       actions.select_default:replace(function()
         local entry = action_state.get_selected_entry().value
@@ -417,17 +451,33 @@ function M.tmux_sessions(opts)
         end
       end)
 
+      local function find_entry_index(picker, target_type, session_name, window_index)
+        for i = 1, picker.manager:num_results() do
+          local e = picker.manager:get_entry(i)
+          if e and e.value then
+            local v = e.value
+            if v.type == target_type and v.session_name == session_name then
+              if target_type == "session" or (target_type == "window" and v.window_index == window_index) then
+                return i
+              end
+            end
+          end
+        end
+        return nil
+      end
+
       local function toggle_expand(expand)
         local sel = action_state.get_selected_entry()
         if not sel then return end
         local entry = sel.value
         local picker = action_state.get_current_picker(prompt_bufnr)
-        local current_row = picker:get_selection_row()
+
 
         if entry.type == "session" then
-          if expand and not entry.expanded then
+          local is_expanded = expanded_sessions[entry.session_name]
+          if expand and not is_expanded then
             expanded_sessions[entry.session_name] = true
-          elseif not expand and entry.expanded then
+          elseif not expand and is_expanded then
             expanded_sessions[entry.session_name] = nil
           else
             return
@@ -435,14 +485,16 @@ function M.tmux_sessions(opts)
           picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
           vim.defer_fn(function()
             if vim.api.nvim_buf_is_valid(prompt_bufnr) then
-              picker:set_selection(current_row)
+              local idx = find_entry_index(picker, "session", entry.session_name)
+              if idx then picker:set_selection(picker:get_row(idx)) end
             end
           end, 10)
         elseif entry.type == "window" and entry.pane_count > 1 then
           local win_key = entry.session_name .. ":" .. entry.window_index
-          if expand and not entry.expanded then
+          local is_expanded = expanded_windows[win_key]
+          if expand and not is_expanded then
             expanded_windows[win_key] = true
-          elseif not expand and entry.expanded then
+          elseif not expand and is_expanded then
             expanded_windows[win_key] = nil
           else
             return
@@ -450,7 +502,8 @@ function M.tmux_sessions(opts)
           picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
           vim.defer_fn(function()
             if vim.api.nvim_buf_is_valid(prompt_bufnr) then
-              picker:set_selection(current_row)
+              local idx = find_entry_index(picker, "window", entry.session_name, entry.window_index)
+              if idx then picker:set_selection(picker:get_row(idx)) end
             end
           end, 10)
         end
