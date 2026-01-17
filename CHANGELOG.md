@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.1](https://github.com/dkooll/tmuxer.nvim/compare/v1.9.0...v1.9.1) (2026-01-17)
+
+
+### Bug Fixes
+
+* fix ordening windows in selection multiple sessions ([#27](https://github.com/dkooll/tmuxer.nvim/issues/27)) ([ee27ff5](https://github.com/dkooll/tmuxer.nvim/commit/ee27ff5867ad0b9b8a633dd3cfad1c108b02d164))
+
 ## [1.9.0](https://github.com/dkooll/tmuxer.nvim/compare/v1.8.0...v1.9.0) (2026-01-16)
 
 
