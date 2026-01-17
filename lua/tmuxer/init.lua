@@ -439,6 +439,9 @@ function M.tmux_sessions(opts)
         local entry = sel.value
         local picker = action_state.get_current_picker(prompt_bufnr)
 
+        -- DEBUG: show what entry is selected
+        vim.notify("Selected: " .. entry.type .. " - " .. (entry.session_name or "nil"), vim.log.levels.INFO)
+
         if entry.type == "session" then
           local is_expanded = expanded_sessions[entry.session_name]
           if expand and not is_expanded then
