@@ -294,7 +294,7 @@ local function build_session_entries(sessions)
 
         local win_branch = win_is_last and "└─› " or "├─› "
         local pane_suffix = pane_count > 1 and string.format(": %d panes", pane_count) or ""
-        local win_display = string.format("  %s%s%d: %s%s (%s)", win_branch, win_indicator, win.index, win.name, pane_suffix, session.name)
+        local win_display = string.format("  %s%s%d: %s%s", win_branch, win_indicator, win.index, win.name, pane_suffix)
 
         entries[#entries + 1] = {
           type = "window",
@@ -315,7 +315,7 @@ local function build_session_entries(sessions)
             local pane_is_last = (k == pane_count)
             local pane_prefix = win_is_last and "      " or "  │   "
             local pane_branch = pane_is_last and "└─› " or "├─› "
-            local pane_display = string.format("%s%s%d: %s (%s)", pane_prefix, pane_branch, pane.index, pane.command, session.name)
+            local pane_display = string.format("%s%s%d: %s", pane_prefix, pane_branch, pane.index, pane.command)
 
             entries[#entries + 1] = {
               type = "pane",
@@ -440,9 +440,10 @@ function M.tmux_sessions(opts)
         local picker = action_state.get_current_picker(prompt_bufnr)
 
         if entry.type == "session" then
-          if expand and not entry.expanded then
+          local is_expanded = expanded_sessions[entry.session_name]
+          if expand and not is_expanded then
             expanded_sessions[entry.session_name] = true
-          elseif not expand and entry.expanded then
+          elseif not expand and is_expanded then
             expanded_sessions[entry.session_name] = nil
           else
             return
@@ -456,9 +457,10 @@ function M.tmux_sessions(opts)
           end, 10)
         elseif entry.type == "window" and entry.pane_count > 1 then
           local win_key = entry.session_name .. ":" .. entry.window_index
-          if expand and not entry.expanded then
+          local is_expanded = expanded_windows[win_key]
+          if expand and not is_expanded then
             expanded_windows[win_key] = true
-          elseif not expand and entry.expanded then
+          elseif not expand and is_expanded then
             expanded_windows[win_key] = nil
           else
             return
