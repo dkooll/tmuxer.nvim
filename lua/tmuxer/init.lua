@@ -297,9 +297,6 @@ local function build_session_entries(sessions)
         local pane_suffix = pane_count > 1 and string.format(": %d panes", pane_count) or ""
         local win_display = string.format("  %s%s%d: %s%s", win_branch, win_indicator, win.index, win.name, pane_suffix)
 
-        -- Use session ordinal + unique suffix to keep windows grouped with their session
-        local win_ordinal = session.name .. " " .. session.parent .. " " .. string.format("%03d", win.index) .. " " .. win.name
-
         entries[#entries + 1] = {
           type = "window",
           session_name = session.name,
@@ -311,7 +308,7 @@ local function build_session_entries(sessions)
           expanded = win_is_expanded,
           is_last = win_is_last,
           display_str = win_display,
-          ordinal_str = win_ordinal,
+          ordinal_str = session.name .. " " .. session.parent .. " " .. win.name,
         }
 
         if win_is_expanded and pane_count > 1 then
@@ -320,9 +317,6 @@ local function build_session_entries(sessions)
             local pane_prefix = win_is_last and "      " or "  │   "
             local pane_branch = pane_is_last and "└─› " or "├─› "
             local pane_display = string.format("%s%s%d: %s", pane_prefix, pane_branch, pane.index, pane.command)
-
-            -- Use window ordinal + pane suffix to keep panes grouped with their window
-            local pane_ordinal = win_ordinal .. " " .. string.format("%03d", pane.index) .. " " .. pane.command
 
             entries[#entries + 1] = {
               type = "pane",
@@ -333,7 +327,7 @@ local function build_session_entries(sessions)
               pane_index = pane.index,
               pane_command = pane.command,
               display_str = pane_display,
-              ordinal_str = pane_ordinal,
+              ordinal_str = session.name .. " " .. session.parent .. " " .. win.name .. " " .. pane.command,
             }
           end
         end
