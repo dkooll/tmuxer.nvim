@@ -2,6 +2,7 @@ local M = {}
 
 local pickers = require('telescope.pickers')
 local finders = require('telescope.finders')
+local sorters = require('telescope.sorters')
 local conf = require('telescope.config').values
 local actions = require('telescope.actions')
 local action_state = require('telescope.actions.state')
@@ -378,6 +379,38 @@ local function create_session_finder(sessions)
   }
 end
 
+-- Custom sorter that filters but preserves original order
+local function create_preserve_order_sorter()
+  return sorters.new {
+    scoring_function = function(_, prompt, _, entry)
+      if not prompt or prompt == "" then
+        return 1 -- Show all entries with same score
+      end
+
+      local ordinal = entry.ordinal:lower()
+      local search = prompt:lower()
+
+      -- Check if entry matches (simple substring match)
+      if ordinal:find(search, 1, true) then
+        return 1 -- All matches get same score to preserve order
+      end
+
+      return -1 -- Filter out non-matches
+    end,
+    highlighter = function(_, prompt, display)
+      if not prompt or prompt == "" then return {} end
+      local highlights = {}
+      local search = prompt:lower()
+      local display_lower = display:lower()
+      local start_pos = display_lower:find(search, 1, true)
+      if start_pos then
+        table.insert(highlights, { start = start_pos - 1, finish = start_pos + #search - 1 })
+      end
+      return highlights
+    end,
+  }
+end
+
 local function refresh_picker(prompt_bufnr, sessions)
   if not vim.api.nvim_buf_is_valid(prompt_bufnr) then return end
   local picker = action_state.get_current_picker(prompt_bufnr)
@@ -410,7 +443,7 @@ function M.tmux_sessions(opts)
   pickers.new(apply_theme(opts), {
     prompt_title = "Switch Tmux Session",
     finder = create_session_finder(state.sessions),
-    sorter = conf.generic_sorter({}),
+    sorter = create_preserve_order_sorter(),
     attach_mappings = function(prompt_bufnr, map)
       actions.select_default:replace(function()
         local entry = action_state.get_selected_entry().value
