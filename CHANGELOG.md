@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0](https://github.com/dkooll/tmuxer.nvim/compare/v1.9.1...v1.10.0) (2026-03-07)
+
+
+### Features
+
+* several speed improvements ([#29](https://github.com/dkooll/tmuxer.nvim/issues/29)) ([e7e9df4](https://github.com/dkooll/tmuxer.nvim/commit/e7e9df4f0069afbad74745991ab8632526df7429))
+
 ## [1.9.1](https://github.com/dkooll/tmuxer.nvim/compare/v1.9.0...v1.9.1) (2026-01-17)
 
 
