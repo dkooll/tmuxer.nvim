@@ -1,11 +1,16 @@
 local M = {}
 
-local pickers = require('telescope.pickers')
-local finders = require('telescope.finders')
-local sorters = require('telescope.sorters')
-local conf = require('telescope.config').values
-local actions = require('telescope.actions')
-local action_state = require('telescope.actions.state')
+local pickers, finders, sorters, conf, actions, action_state
+
+local function load_telescope()
+  if pickers then return end
+  pickers = require('telescope.pickers')
+  finders = require('telescope.finders')
+  sorters = require('telescope.sorters')
+  conf = require('telescope.config').values
+  actions = require('telescope.actions')
+  action_state = require('telescope.actions.state')
+end
 
 local project_cache = {}
 local expanded_sessions = {}
@@ -98,29 +103,9 @@ local function create_tmux_session_with_nvim(session_name, project_path, existin
   })
 end
 
-local function find_git_projects(workspace_path, include_archive)
-  local cache_key = workspace_path .. (include_archive and ":with_archive" or ":without_archive")
-  if project_cache[cache_key] then return project_cache[cache_key] end
-
-  local expanded = vim.fn.expand(workspace_path)
-  local escaped = vim.fn.shellescape(expanded)
-  local depth = M.config.max_depth + 1
-  local archive_depth = M.config.max_depth + 3
-
-  local cmd
-  if has_fd then
-    cmd = include_archive
-        and string.format("fd -H -t d '^.git$' -d %d . %s -x echo {//}", archive_depth, escaped)
-        or string.format("fd -H -t d '^.git$' -d %d --exclude archive . %s -x echo {//}", depth, escaped)
-  else
-    cmd = include_archive
-        and string.format("find %s -maxdepth %d -type d -name .git -exec dirname {} \\;", escaped, archive_depth)
-        or string.format("find %s -maxdepth %d -type d -name .git ! -path '*/archive/*' -exec dirname {} \\;", escaped,
-          depth)
-  end
-
+local function parse_git_projects(lines)
   local results = {}
-  for _, path in ipairs(vim.fn.systemlist(cmd)) do
+  for _, path in ipairs(lines) do
     if path ~= "" then
       local name = path:match("[^/]+$")
       local parent = path:match("([^/]+)/[^/]+$")
@@ -135,71 +120,114 @@ local function find_git_projects(workspace_path, include_archive)
       end
     end
   end
-
   table.sort(results, function(a, b)
     if a.lower_parent == b.lower_parent then return a.lower_name < b.lower_name end
     return a.lower_parent < b.lower_parent
   end)
-
-  project_cache[cache_key] = results
   return results
 end
 
+local function build_git_cmd(workspace_path, include_archive)
+  local expanded = vim.fn.expand(workspace_path)
+  local escaped = vim.fn.shellescape(expanded)
+  local depth = M.config.max_depth + 1
+  local archive_depth = M.config.max_depth + 3
+
+  if has_fd then
+    return include_archive
+        and string.format("fd -H -t d '^.git$' -d %d . %s -x echo {//}", archive_depth, escaped)
+        or string.format("fd -H -t d '^.git$' -d %d --exclude archive . %s -x echo {//}", depth, escaped)
+  else
+    return include_archive
+        and string.format("find %s -maxdepth %d -type d -name .git -exec dirname {} \\;", escaped, archive_depth)
+        or string.format("find %s -maxdepth %d -type d -name .git ! -path '*/archive/*' -exec dirname {} \\;", escaped,
+          depth)
+  end
+end
+
+local function find_git_projects_async(workspace_path, include_archive, callback)
+  local cache_key = workspace_path .. (include_archive and ":with_archive" or ":without_archive")
+  if project_cache[cache_key] then
+    callback(project_cache[cache_key])
+    return
+  end
+
+  local cmd = build_git_cmd(workspace_path, include_archive)
+  local stdout_data = {}
+
+  vim.fn.jobstart(cmd, {
+    stdout_buffered = true,
+    on_stdout = function(_, data)
+      if data then stdout_data = data end
+    end,
+    on_exit = function(_, code)
+      local results = parse_git_projects(code == 0 and stdout_data or {})
+      project_cache[cache_key] = results
+      vim.schedule(function() callback(results) end)
+    end,
+  })
+end
+
 local function preload_cache(workspace_path)
-  find_git_projects(workspace_path, false)
-  vim.defer_fn(function() find_git_projects(workspace_path, true) end, 100)
+  find_git_projects_async(workspace_path, false, function()
+    find_git_projects_async(workspace_path, true, function() end)
+  end)
 end
 
 function M.open_workspace_popup(workspace, opts)
+  load_telescope()
   if not is_tmux_running() then
     vim.notify("Not in a tmux session", vim.log.levels.WARN)
     return
   end
 
-  local projects = find_git_projects(workspace.path, M.config.show_archive)
   local existing_sessions = get_tmux_session_name_set()
 
-  pickers.new(apply_theme(opts), {
-    prompt_title = "Select a project in " .. workspace.name,
-    finder = finders.new_table {
-      results = projects,
-      entry_maker = function(entry)
-        return {
-          value = entry,
-          display = entry.name .. "/" .. entry.parent,
-          ordinal = entry.name .. " " .. entry.parent,
-        }
-      end
-    },
-    sorter = conf.generic_sorter({}),
-    attach_mappings = function(prompt_bufnr)
-      actions.select_default:replace(function()
-        local picker = action_state.get_current_picker(prompt_bufnr)
-        local selections = picker:get_multi_selection()
-        actions.close(prompt_bufnr)
+  local function show_picker(projects)
+    pickers.new(apply_theme(opts), {
+      prompt_title = "Select a project in " .. workspace.name,
+      finder = finders.new_table {
+        results = projects,
+        entry_maker = function(entry)
+          return {
+            value = entry,
+            display = entry.name .. "/" .. entry.parent,
+            ordinal = entry.name .. " " .. entry.parent,
+          }
+        end
+      },
+      sorter = conf.generic_sorter({}),
+      attach_mappings = function(prompt_bufnr)
+        actions.select_default:replace(function()
+          local picker = action_state.get_current_picker(prompt_bufnr)
+          local selections = picker:get_multi_selection()
+          actions.close(prompt_bufnr)
 
-        if #selections > 0 then
-          local completed, total = 0, #selections
-          for _, selection in ipairs(selections) do
-            local project = selection.value
+          if #selections > 0 then
+            local completed, total = 0, #selections
+            for _, selection in ipairs(selections) do
+              local project = selection.value
+              local session_name = project.name:lower():gsub("[^%w_]", "_")
+              create_tmux_session_with_nvim(session_name, project.path, existing_sessions, function()
+                completed = completed + 1
+                vim.notify(string.format("Created session (%d/%d): %s", completed, total, session_name),
+                  vim.log.levels.INFO)
+              end)
+            end
+          else
+            local project = action_state.get_selected_entry().value
             local session_name = project.name:lower():gsub("[^%w_]", "_")
             create_tmux_session_with_nvim(session_name, project.path, existing_sessions, function()
-              completed = completed + 1
-              vim.notify(string.format("Created session (%d/%d): %s", completed, total, session_name),
-                vim.log.levels.INFO)
+              switch_tmux_session(session_name)
             end)
           end
-        else
-          local project = action_state.get_selected_entry().value
-          local session_name = project.name:lower():gsub("[^%w_]", "_")
-          create_tmux_session_with_nvim(session_name, project.path, existing_sessions, function()
-            switch_tmux_session(session_name)
-          end)
-        end
-      end)
-      return true
-    end,
-  }):find()
+        end)
+        return true
+      end,
+    }):find()
+  end
+
+  find_git_projects_async(workspace.path, M.config.show_archive, show_picker)
 end
 
 local function get_all_panes_batched()
@@ -420,6 +448,7 @@ local function refresh_picker(prompt_bufnr, sessions)
 end
 
 function M.tmux_sessions(opts)
+  load_telescope()
   if not is_tmux_running() then
     vim.notify("Not in a tmux session", vim.log.levels.WARN)
     return
@@ -612,6 +641,7 @@ function M.setup(opts)
   end
 
   vim.api.nvim_create_user_command("TmuxCreateSession", function()
+    load_telescope()
     if #M.workspaces == 1 then
       M.open_workspace_popup(M.workspaces[1])
     else
