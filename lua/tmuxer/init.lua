@@ -387,13 +387,13 @@ local function switch_to_pane(session_name, window_index, pane_index)
   })
 end
 
-local function popup_target(target)
+local function popup_session(session_name)
   local cfg = M.config.popup or {}
   local w = cfg.width or "80%"
   local h = cfg.height or "80%"
   local s = cfg.border_style or "fg=#232728"
   vim.fn.jobstart(
-    string.format("tmux popup -E -w %s -h %s -S '%s' \"tmux select-window -t '%s' \\; attach -t '%s'\"", w, h, s, target, target:match("^[^:]+"))
+    string.format("tmux popup -E -w %s -h %s -S '%s' 'tmux attach -t %s'", w, h, s, session_name)
   )
 end
 
@@ -482,8 +482,8 @@ function M.tmux_sessions(opts)
       actions.select_default:replace(function()
         local entry = action_state.get_selected_entry().value
         actions.close(prompt_bufnr)
-        if entry.type == "window" and entry.window_name:match("^floating") then
-          popup_target(entry.session_name .. ":floating")
+        if entry.session_name:match("_floating") then
+          popup_session(entry.session_name)
         elseif entry.type == "pane" then
           switch_to_pane(entry.session_name, entry.window_index, entry.pane_index)
         elseif entry.type == "window" then
