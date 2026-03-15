@@ -25,6 +25,7 @@ M.config = {
   border = true,
   show_archive = false,
   max_depth = 2,
+  popup = { width = "80%", height = "80%", border_style = "fg=#232728" },
 }
 
 local function apply_theme(opts)
@@ -271,8 +272,8 @@ local function get_non_current_tmux_sessions()
   local windows_by_session = get_all_windows_batched()
   local sessions = {}
   for _, line in ipairs(vim.fn.systemlist('tmux list-sessions -F "#{?session_attached,1,0} #{session_name} #{session_path}"')) do
-    local is_current, name, path = line:match("^(%d)%s+(%S+)%s+(.+)$")
-    if name and path and is_current == "0" then
+    local is_current, name, path = line:match("^(%d)%s+(%S+)%s*(.*)$")
+    if name and is_current == "0" then
       sessions[#sessions + 1] = {
         name = name,
         parent = path:match("([^/]+)/[^/]+$") or "",
@@ -386,6 +387,16 @@ local function switch_to_pane(session_name, window_index, pane_index)
   })
 end
 
+local function popup_target(target)
+  local cfg = M.config.popup or {}
+  local w = cfg.width or "80%"
+  local h = cfg.height or "80%"
+  local s = cfg.border_style or "fg=#232728"
+  vim.fn.jobstart(
+    string.format("tmux popup -E -w %s -h %s -S '%s' \"tmux select-window -t '%s' \\; attach -t '%s'\"", w, h, s, target, target:match("^[^:]+"))
+  )
+end
+
 local function create_session_finder(sessions)
   local entries = build_session_entries(sessions)
 
@@ -471,7 +482,9 @@ function M.tmux_sessions(opts)
       actions.select_default:replace(function()
         local entry = action_state.get_selected_entry().value
         actions.close(prompt_bufnr)
-        if entry.type == "pane" then
+        if entry.type == "window" and entry.window_name:match("^floating") then
+          popup_target(entry.session_name .. ":floating")
+        elseif entry.type == "pane" then
           switch_to_pane(entry.session_name, entry.window_index, entry.pane_index)
         elseif entry.type == "window" then
           switch_to_window(entry.session_name, entry.window_index)
