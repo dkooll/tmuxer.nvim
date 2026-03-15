@@ -271,14 +271,24 @@ end
 local function get_non_current_tmux_sessions()
   local windows_by_session = get_all_windows_batched()
   local sessions = {}
+  local floating = {}
   for _, line in ipairs(vim.fn.systemlist('tmux list-sessions -F "#{?session_attached,1,0} #{session_name} #{session_path}"')) do
     local is_current, name, path = line:match("^(%d)%s+(%S+)%s*(.*)$")
     if name and is_current == "0" then
-      sessions[#sessions + 1] = {
-        name = name,
-        parent = path:match("([^/]+)/[^/]+$") or "",
-        windows = windows_by_session[name] or {},
-      }
+      local parent_name = name:match("^(.+)_floating[_%d]*$")
+      if parent_name then
+        if not floating[parent_name] then floating[parent_name] = {} end
+        floating[parent_name][#floating[parent_name] + 1] = {
+          name = name,
+          windows = windows_by_session[name] or {},
+        }
+      else
+        sessions[#sessions + 1] = {
+          name = name,
+          parent = path:match("([^/]+)/[^/]+$") or "",
+          windows = windows_by_session[name] or {},
+        }
+      end
     end
   end
 
@@ -286,6 +296,31 @@ local function get_non_current_tmux_sessions()
     if a.parent == b.parent then return a.name < b.name end
     return a.parent < b.parent
   end)
+
+  for _, session in ipairs(sessions) do
+    session.floating = floating[session.name] or {}
+    table.sort(session.floating, function(a, b) return a.name < b.name end)
+  end
+
+  -- Attach orphaned floating sessions (parent is the current/attached session)
+  for parent_name, floats in pairs(floating) do
+    local found = false
+    for _, session in ipairs(sessions) do
+      if session.name == parent_name then found = true; break end
+    end
+    if not found then
+      for _, f in ipairs(floats) do
+        sessions[#sessions + 1] = {
+          name = f.name,
+          parent = "",
+          windows = f.windows,
+          floating = {},
+          is_floating = true,
+        }
+      end
+    end
+  end
+
   return sessions
 end
 
@@ -293,72 +328,108 @@ local function build_session_entries(sessions)
   local entries = {}
 
   for _, session in ipairs(sessions) do
-    local is_expanded = expanded_sessions[session.name]
-    local win_count = #session.windows
+    if session.is_floating then
+      -- Orphaned floating session (parent is current/attached session)
+      local display_str = string.format("⧉ %s", session.name)
+      entries[#entries + 1] = {
+        type = "floating",
+        session_name = session.name,
+        parent = session.parent,
+        display_str = display_str,
+        ordinal_str = session.name,
+      }
+    else
+      local is_expanded = expanded_sessions[session.name]
+      local win_count = #session.windows
+      local float_count = #(session.floating or {})
+      local has_children = win_count > 0 or float_count > 0
 
-    local session_indicator = is_expanded and "─" or "+"
-    local window_suffix = win_count == 1 and ": 1 window" or string.format(": %d windows", win_count)
-    local display_str = string.format("%s %s/%s%s", session_indicator, session.name, session.parent, window_suffix)
+      local session_indicator = has_children and (is_expanded and "─" or "+") or " "
+      local window_suffix = win_count == 1 and ": 1 window" or string.format(": %d windows", win_count)
+      if float_count > 0 then
+        window_suffix = window_suffix .. string.format(", %d floating", float_count)
+      end
+      local display_str = string.format("%s %s/%s%s", session_indicator, session.name, session.parent, window_suffix)
 
-    entries[#entries + 1] = {
-      type = "session",
-      session_name = session.name,
-      parent = session.parent,
-      window_count = win_count,
-      expanded = is_expanded,
-      display_str = display_str,
-      ordinal_str = session.name .. " " .. session.parent,
-    }
+      entries[#entries + 1] = {
+        type = "session",
+        session_name = session.name,
+        parent = session.parent,
+        window_count = win_count,
+        expanded = is_expanded,
+        display_str = display_str,
+        ordinal_str = session.name .. " " .. session.parent,
+      }
 
-    if is_expanded then
-      for j, win in ipairs(session.windows) do
-        local win_is_last = (j == win_count)
-        local win_key = session.name .. ":" .. win.index
-        local win_is_expanded = expanded_windows[win_key]
-        local pane_count = #win.panes
+      if is_expanded then
+        local total_children = win_count + float_count
 
-        local win_indicator = ""
-        if pane_count > 1 then
-          win_indicator = win_is_expanded and "─" or "+"
+        for j, win in ipairs(session.windows) do
+          local child_idx = j
+          local win_is_last = (child_idx == total_children)
+          local win_key = session.name .. ":" .. win.index
+          local win_is_expanded = expanded_windows[win_key]
+          local pane_count = #win.panes
+
+          local win_indicator = ""
+          if pane_count > 1 then
+            win_indicator = win_is_expanded and "─" or "+"
+          end
+
+          local win_branch = win_is_last and "└─› " or "├─› "
+          local pane_suffix = pane_count > 1 and string.format(": %d panes", pane_count) or ""
+          local win_display = string.format("  %s%s%d: %s%s", win_branch, win_indicator, win.index, win.name, pane_suffix)
+
+          entries[#entries + 1] = {
+            type = "window",
+            session_name = session.name,
+            parent = session.parent,
+            window_index = win.index,
+            window_name = win.name,
+            pane_count = pane_count,
+            panes = win.panes,
+            expanded = win_is_expanded,
+            is_last = win_is_last,
+            display_str = win_display,
+            ordinal_str = session.name .. " " .. session.parent .. " " .. win.name,
+          }
+
+          if win_is_expanded and pane_count > 1 then
+            for k, pane in ipairs(win.panes) do
+              local pane_is_last = (k == pane_count)
+              local pane_prefix = win_is_last and "      " or "  │   "
+              local pane_branch = pane_is_last and "└─› " or "├─› "
+              local pane_display = string.format("%s%s%d: %s", pane_prefix, pane_branch, pane.index, pane.command)
+
+              entries[#entries + 1] = {
+                type = "pane",
+                session_name = session.name,
+                parent = session.parent,
+                window_index = win.index,
+                window_name = win.name,
+                pane_index = pane.index,
+                pane_command = pane.command,
+                display_str = pane_display,
+                ordinal_str = session.name .. " " .. session.parent .. " " .. win.name .. " " .. pane.command,
+              }
+            end
+          end
         end
 
-        local win_branch = win_is_last and "└─› " or "├─› "
-        local pane_suffix = pane_count > 1 and string.format(": %d panes", pane_count) or ""
-        local win_display = string.format("  %s%s%d: %s%s", win_branch, win_indicator, win.index, win.name, pane_suffix)
+        for j, float in ipairs(session.floating or {}) do
+          local float_is_last = (win_count + j == total_children)
+          local float_branch = float_is_last and "└─› " or "├─› "
+          local float_label = float.name:match("_floating_(%d+)$") or "default"
+          local float_display = string.format("  %s⧉ floating: %s", float_branch, float_label)
 
-        entries[#entries + 1] = {
-          type = "window",
-          session_name = session.name,
-          parent = session.parent,
-          window_index = win.index,
-          window_name = win.name,
-          pane_count = pane_count,
-          panes = win.panes,
-          expanded = win_is_expanded,
-          is_last = win_is_last,
-          display_str = win_display,
-          ordinal_str = session.name .. " " .. session.parent .. " " .. win.name,
-        }
-
-        if win_is_expanded and pane_count > 1 then
-          for k, pane in ipairs(win.panes) do
-            local pane_is_last = (k == pane_count)
-            local pane_prefix = win_is_last and "      " or "  │   "
-            local pane_branch = pane_is_last and "└─› " or "├─› "
-            local pane_display = string.format("%s%s%d: %s", pane_prefix, pane_branch, pane.index, pane.command)
-
-            entries[#entries + 1] = {
-              type = "pane",
-              session_name = session.name,
-              parent = session.parent,
-              window_index = win.index,
-              window_name = win.name,
-              pane_index = pane.index,
-              pane_command = pane.command,
-              display_str = pane_display,
-              ordinal_str = session.name .. " " .. session.parent .. " " .. win.name .. " " .. pane.command,
-            }
-          end
+          entries[#entries + 1] = {
+            type = "floating",
+            session_name = float.name,
+            parent = session.parent,
+            parent_session = session.name,
+            display_str = float_display,
+            ordinal_str = session.name .. " " .. session.parent .. " floating " .. float_label,
+          }
         end
       end
     end
@@ -482,7 +553,7 @@ function M.tmux_sessions(opts)
       actions.select_default:replace(function()
         local entry = action_state.get_selected_entry().value
         actions.close(prompt_bufnr)
-        if entry.session_name:match("_floating") then
+        if entry.type == "floating" then
           popup_session(entry.session_name)
         elseif entry.type == "pane" then
           switch_to_pane(entry.session_name, entry.window_index, entry.pane_index)
