@@ -385,7 +385,7 @@ local function build_session_entries(sessions)
 
           local win_branch = win_is_last and "└─› " or "├─› "
           local pane_suffix = pane_count > 1 and string.format(": %d panes", pane_count) or ""
-          local win_display = string.format("  %s%s  %s%s", win_branch, win_indicator, win.name, pane_suffix)
+          local win_display = string.format("  %s %s  %s%s", win_branch, win_indicator, win.name, pane_suffix)
 
           entries[#entries + 1] = {
             type = "window",
