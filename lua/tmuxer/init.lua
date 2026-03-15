@@ -272,9 +272,12 @@ local function get_non_current_tmux_sessions()
   local windows_by_session = get_all_windows_batched()
   local sessions = {}
   local floating = {}
+  local current_session = nil
   for _, line in ipairs(vim.fn.systemlist('tmux list-sessions -F "#{?session_attached,1,0} #{session_name} #{session_path}"')) do
     local is_current, name, path = line:match("^(%d)%s+(%S+)%s*(.*)$")
-    if name and is_current == "0" then
+    if name and is_current == "1" then
+      current_session = name
+    elseif name and is_current == "0" then
       local parent_name = name:match("^(.+)_floating[_%d]*$")
       if parent_name then
         if not floating[parent_name] then floating[parent_name] = {} end
@@ -302,8 +305,9 @@ local function get_non_current_tmux_sessions()
     table.sort(session.floating, function(a, b) return a.name < b.name end)
   end
 
-  -- Attach orphaned floating sessions (parent is the current/attached session)
+  -- Skip floating sessions whose parent is the current session
   for parent_name, floats in pairs(floating) do
+    if parent_name == current_session then goto continue end
     local found = false
     for _, session in ipairs(sessions) do
       if session.name == parent_name then found = true; break end
@@ -319,6 +323,7 @@ local function get_non_current_tmux_sessions()
         }
       end
     end
+    ::continue::
   end
 
   return sessions
@@ -375,7 +380,7 @@ local function build_session_entries(sessions)
           if pane_count > 1 then
             win_indicator = win_is_expanded and "─" or "+"
           else
-            win_indicator = "󰣆"
+            win_indicator = ""
           end
 
           local win_branch = win_is_last and "└─› " or "├─› "
