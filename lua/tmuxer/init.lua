@@ -330,7 +330,7 @@ local function build_session_entries(sessions)
   for _, session in ipairs(sessions) do
     if session.is_floating then
       -- Orphaned floating session (parent is current/attached session)
-      local display_str = string.format("⧉ %s", session.name)
+      local display_str = string.format("⧉  %s", session.name)
       entries[#entries + 1] = {
         type = "floating",
         session_name = session.name,
@@ -378,7 +378,7 @@ local function build_session_entries(sessions)
 
           local win_branch = win_is_last and "└─› " or "├─› "
           local pane_suffix = pane_count > 1 and string.format(": %d panes", pane_count) or ""
-          local win_display = string.format("  %s%s%d: %s%s", win_branch, win_indicator, win.index, win.name, pane_suffix)
+          local win_display = string.format("  %s%s  %d: %s%s", win_branch, win_indicator, win.index, win.name, pane_suffix)
 
           entries[#entries + 1] = {
             type = "window",
@@ -420,7 +420,7 @@ local function build_session_entries(sessions)
           local float_is_last = (win_count + j == total_children)
           local float_branch = float_is_last and "└─› " or "├─› "
           local float_label = float.name:match("_floating_(%d+)$") or "default"
-          local float_display = string.format("  %s⧉ floating: %s", float_branch, float_label)
+          local float_display = string.format("  %s⧉  %s", float_branch, float_label)
 
           entries[#entries + 1] = {
             type = "floating",
