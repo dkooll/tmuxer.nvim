@@ -375,7 +375,7 @@ local function build_session_entries(sessions)
           if pane_count > 1 then
             win_indicator = win_is_expanded and "─" or "+"
           else
-            win_indicator = ""
+            win_indicator = "□"
           end
 
           local win_branch = win_is_last and "└─› " or "├─› "
