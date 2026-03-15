@@ -375,12 +375,12 @@ local function build_session_entries(sessions)
           if pane_count > 1 then
             win_indicator = win_is_expanded and "─" or "+"
           else
-            win_indicator = "□"
+            win_indicator = "󰣆"
           end
 
           local win_branch = win_is_last and "└─› " or "├─› "
           local pane_suffix = pane_count > 1 and string.format(": %d panes", pane_count) or ""
-          local win_display = string.format("  %s%s  %d: %s%s", win_branch, win_indicator, win.index, win.name, pane_suffix)
+          local win_display = string.format("  %s%s  %s%s", win_branch, win_indicator, win.name, pane_suffix)
 
           entries[#entries + 1] = {
             type = "window",
