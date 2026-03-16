@@ -18,6 +18,8 @@ View sessions, windows, and panes in a tree structure
 
 Switch directly to a specific session, window, or pane
 
+Floating popup support for tmux sessions
+
 Multi-select support for batch operations
 
 Kill tmux sessions or individual windows without leaving Neovim
@@ -32,7 +34,7 @@ Health check for verifying plugin setup
 
 Neovim 0.10.4 or higher
 
-Tmux running (plugin checks for $TMUX environment variable)
+Tmux 3.2 or higher (popup support required for floating sessions)
 
 Telescope.nvim
 
@@ -42,7 +44,7 @@ Fd command (optional, falls back to find if not available)
 
 To configure the plugin with [lazy.nvim](https://github.com/folke/lazy.nvim), use the following setup:
 
-```lua
+```
 return {
   "dkooll/tmuxer.nvim",
   dependencies = { "nvim-telescope/telescope.nvim" },
@@ -66,7 +68,12 @@ return {
       layout_config = {
         width = 0.5,
         height = 0.31,
-      }
+      },
+      floating_suffix = "_floating",
+      icons = {
+        window = "□",
+        floating = "⧉",
+      },
     })
   end,
   keys = {
@@ -112,6 +119,18 @@ Show archived projects by default (default: `false`)
 
 Telescope layout dimensions (default: `{ height = 15, width = 80 }`)
 
+`floating_suffix`
+
+Suffix used to detect floating sessions (default: `"_floating"`)
+
+`icons.window`
+
+Icon for windows in the session picker (default: `"□"`)
+
+`icons.floating`
+
+Icon for floating sessions in the session picker (default: `"⧉"`)
+
 ## Commands
 
 `:TmuxCreateSession`
@@ -120,7 +139,7 @@ Opens a Telescope picker to browse Git projects within configured workspaces and
 
 `:TmuxSwitchSession`
 
-Lists all non-attached tmux sessions in a tree view. Sessions can be expanded to show windows, and windows with multiple panes can be expanded to show panes. Select any item to switch to it.
+Lists all non-attached tmux sessions in a tree view. Sessions can be expanded to show windows and panes. Floating sessions are nested under their parent and open as popups. Popup dimensions are read from tmux options `@popup-width`, `@popup-height`, and `@popup-border`.
 
 `:TmuxToggleArchive`
 

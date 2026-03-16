@@ -25,6 +25,11 @@ M.config = {
   border = true,
   show_archive = false,
   max_depth = 2,
+  floating_suffix = "_floating",
+  icons = {
+    window = "□",
+    floating = "⧉",
+  },
 }
 
 local function apply_theme(opts)
@@ -277,7 +282,8 @@ local function get_non_current_tmux_sessions()
     if name and is_current == "1" then
       current_session = name
     elseif name and is_current == "0" then
-      local parent_name = name:match("^(.+)_floating[_%d]*$")
+      local suffix = M.config.floating_suffix:gsub("([%.%+%-%*%?%[%]%^%$%(%)%%])", "%%%1")
+      local parent_name = name:match("^(.+)" .. suffix .. "[_%d]*$")
       if parent_name then
         if not floating[parent_name] then floating[parent_name] = {} end
         floating[parent_name][#floating[parent_name] + 1] = {
@@ -334,7 +340,7 @@ local function build_session_entries(sessions)
   for _, session in ipairs(sessions) do
     if session.is_floating then
       -- Orphaned floating session (parent is current/attached session)
-      local display_str = string.format("⧉  %s", session.name)
+      local display_str = string.format("%s  %s", M.config.icons.floating, session.name)
       entries[#entries + 1] = {
         type = "floating",
         session_name = session.name,
@@ -379,7 +385,7 @@ local function build_session_entries(sessions)
           if pane_count > 1 then
             win_indicator = win_is_expanded and "─" or "+"
           else
-            win_indicator = "□"
+            win_indicator = M.config.icons.window
           end
 
           local win_branch = win_is_last and "└─› " or "├─› "
@@ -425,8 +431,9 @@ local function build_session_entries(sessions)
         for j, float in ipairs(session.floating or {}) do
           local float_is_last = (win_count + j == total_children)
           local float_branch = float_is_last and "└─› " or "├─› "
-          local float_label = float.name:match("_floating_(%d+)$") or "default"
-          local float_display = string.format("  %s⧉  %s", float_branch, float_label)
+          local suffix_pattern = M.config.floating_suffix:gsub("([%.%+%-%*%?%[%]%^%$%(%)%%])", "%%%1")
+          local float_label = float.name:match(suffix_pattern .. "_(%d+)$") or "default"
+          local float_display = string.format("  %s%s  %s", float_branch, M.config.icons.floating, float_label)
 
           entries[#entries + 1] = {
             type = "floating",
