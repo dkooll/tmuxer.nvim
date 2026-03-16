@@ -28,7 +28,9 @@ M.config = {
   floating_suffix = "_floating",
   icons = {
     window = "□",
+    window_hl = nil,
     floating = "⧉",
+    floating_hl = nil,
   },
 }
 
@@ -339,14 +341,17 @@ local function build_session_entries(sessions)
 
   for _, session in ipairs(sessions) do
     if session.is_floating then
-      -- Orphaned floating session (parent is current/attached session)
-      local display_str = string.format("%s  %s", M.config.icons.floating, session.name)
+      local float_icon = M.config.icons.floating
+      local display_str = string.format("%s  %s", float_icon, session.name)
       entries[#entries + 1] = {
         type = "floating",
         session_name = session.name,
         parent = session.parent,
         display_str = display_str,
         ordinal_str = session.name,
+        icon_hl = M.config.icons.floating_hl and "TmuxerFloatingIcon" or nil,
+        icon_start = 0,
+        icon_end = #float_icon,
       }
     else
       local is_expanded = expanded_sessions[session.name]
@@ -390,7 +395,11 @@ local function build_session_entries(sessions)
 
           local win_branch = win_is_last and "└─› " or "├─› "
           local pane_suffix = pane_count > 1 and string.format(": %d panes", pane_count) or ""
-          local win_display = string.format("  %s%s %s%s", win_branch, win_indicator, win.name, pane_suffix)
+          local prefix = "  " .. win_branch
+          local win_display = string.format("%s%s %s%s", prefix, win_indicator, win.name, pane_suffix)
+          local icon_start = #prefix
+          local icon_end = icon_start + #win_indicator
+          local icon_hl = (pane_count <= 1 and M.config.icons.window_hl) and "TmuxerWindowIcon" or nil
 
           entries[#entries + 1] = {
             type = "window",
@@ -404,6 +413,9 @@ local function build_session_entries(sessions)
             is_last = win_is_last,
             display_str = win_display,
             ordinal_str = session.name .. " " .. session.parent .. " " .. win.name,
+            icon_hl = icon_hl,
+            icon_start = icon_start,
+            icon_end = icon_end,
           }
 
           if win_is_expanded and pane_count > 1 then
@@ -433,7 +445,11 @@ local function build_session_entries(sessions)
           local float_branch = float_is_last and "└─› " or "├─› "
           local suffix_pattern = M.config.floating_suffix:gsub("([%.%+%-%*%?%[%]%^%$%(%)%%])", "%%%1")
           local float_label = float.name:match(suffix_pattern .. "_(%d+)$") or "default"
-          local float_display = string.format("  %s%s  %s", float_branch, M.config.icons.floating, float_label)
+          local float_prefix = "  " .. float_branch
+          local float_icon = M.config.icons.floating
+          local float_display = string.format("%s%s  %s", float_prefix, float_icon, float_label)
+          local float_icon_start = #float_prefix
+          local float_icon_end = float_icon_start + #float_icon
 
           entries[#entries + 1] = {
             type = "floating",
@@ -442,6 +458,9 @@ local function build_session_entries(sessions)
             parent_session = session.name,
             display_str = float_display,
             ordinal_str = session.name .. " " .. session.parent .. " floating " .. float_label,
+            icon_hl = M.config.icons.floating_hl and "TmuxerFloatingIcon" or nil,
+            icon_start = float_icon_start,
+            icon_end = float_icon_end,
           }
         end
       end
@@ -493,7 +512,14 @@ local function create_session_finder(sessions)
     entry_maker = function(entry)
       return {
         value = entry,
-        display = entry.display_str,
+        display = function(tbl)
+          local str = tbl.value.display_str
+          local hl = {}
+          if tbl.value.icon_hl and tbl.value.icon_start then
+            hl[#hl + 1] = { { tbl.value.icon_start, tbl.value.icon_end }, tbl.value.icon_hl }
+          end
+          return str, hl
+        end,
         ordinal = entry.ordinal_str,
       }
     end
@@ -736,6 +762,14 @@ function M.setup(opts)
   opts = opts or {}
   M.config = vim.tbl_deep_extend("force", M.config, opts)
   M.workspaces = opts.workspaces or {}
+
+  local icons = M.config.icons
+  if icons.window_hl then
+    vim.api.nvim_set_hl(0, "TmuxerWindowIcon", icons.window_hl)
+  end
+  if icons.floating_hl then
+    vim.api.nvim_set_hl(0, "TmuxerFloatingIcon", icons.floating_hl)
+  end
 
   if #M.workspaces > 0 then
     preload_cache(M.workspaces[1].path)
