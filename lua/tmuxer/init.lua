@@ -25,7 +25,6 @@ M.config = {
   border = true,
   show_archive = false,
   max_depth = 2,
-  popup = { width = "80%", height = "80%", border_style = "fg=#232728" },
 }
 
 local function apply_theme(opts)
@@ -465,11 +464,15 @@ local function switch_to_pane(session_name, window_index, pane_index)
   })
 end
 
+local function get_tmux_option(name, default)
+  local val = vim.fn.system(string.format("tmux show-option -gv %s 2>/dev/null", name)):gsub("%s+$", "")
+  return val ~= "" and val or default
+end
+
 local function popup_session(session_name)
-  local cfg = M.config.popup or {}
-  local w = cfg.width or "80%"
-  local h = cfg.height or "80%"
-  local s = cfg.border_style or "fg=#232728"
+  local w = get_tmux_option("@popup-width", "80%")
+  local h = get_tmux_option("@popup-height", "80%")
+  local s = get_tmux_option("@popup-border", "fg=#232728")
   vim.fn.jobstart(
     string.format("tmux popup -E -w %s -h %s -S '%s' 'tmux attach -t %s'", w, h, s, session_name)
   )
