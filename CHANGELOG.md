@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.0](https://github.com/dkooll/tmuxer.nvim/compare/v1.10.0...v1.11.0) (2026-03-16)
+
+
+### Features
+
+* add floating support ([#31](https://github.com/dkooll/tmuxer.nvim/issues/31)) ([0074ada](https://github.com/dkooll/tmuxer.nvim/commit/0074adaa249017b6ccaff578fc55f790e0cfcc19))
+
 ## [1.10.0](https://github.com/dkooll/tmuxer.nvim/compare/v1.9.1...v1.10.0) (2026-03-07)
 
 
