@@ -718,8 +718,19 @@ function M.tmux_sessions(opts)
         for _, entry in ipairs(entries) do
           if entry.type == "session" then
             sessions_to_kill[entry.session_name] = true
+          elseif entry.type == "floating" then
+            sessions_to_kill[entry.session_name] = true
           elseif not sessions_to_kill[entry.session_name] then
             windows_to_kill[#windows_to_kill + 1] = { session = entry.session_name, index = entry.window_index }
+          end
+        end
+
+        -- Also kill floating sessions belonging to killed sessions
+        for _, session in ipairs(state.sessions) do
+          if sessions_to_kill[session.name] and session.floating then
+            for _, float in ipairs(session.floating) do
+              sessions_to_kill[float.name] = true
+            end
           end
         end
 
