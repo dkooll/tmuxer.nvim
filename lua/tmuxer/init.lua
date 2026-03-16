@@ -17,6 +17,9 @@ local expanded_sessions = {}
 local expanded_windows = {}
 local has_fd = vim.fn.executable('fd') == 1
 
+local HL_WINDOW_ICON = "TmuxerWindowIcon"
+local HL_FLOATING_ICON = "TmuxerFloatingIcon"
+
 M.config = {
   nvim_alias = "nvim",
   layout_config = { height = 15, width = 80 },
@@ -273,10 +276,8 @@ local function get_all_windows_batched()
   return windows_by_session
 end
 
-local function get_session_option(session_name, option)
-  local val = vim.fn.system(string.format("tmux show-option -t %s -v %s 2>/dev/null",
-    vim.fn.shellescape(session_name), option)):gsub("%s+$", "")
-  return val ~= "" and val or nil
+local function float_display_label(entry)
+  return (entry.windows[1] and entry.windows[1].name) or entry.name
 end
 
 local function get_non_current_tmux_sessions()
@@ -284,27 +285,26 @@ local function get_non_current_tmux_sessions()
   local sessions = {}
   local floating = {}
   local current_session = nil
-  for _, line in ipairs(vim.fn.systemlist('tmux list-sessions -F "#{?session_attached,1,0} #{session_name} #{session_path}"')) do
-    local is_current, name, path = line:match("^(%d)%s+(%S+)%s*(.*)$")
-    if name and is_current == "1" then
-      current_session = name
-    elseif name and is_current == "0" then
-      local is_floating = get_session_option(name, "@floating")
-      if is_floating then
-        local parent_name = get_session_option(name, "@floating-parent") or ""
-        if parent_name ~= "" then
-          if not floating[parent_name] then floating[parent_name] = {} end
-          floating[parent_name][#floating[parent_name] + 1] = {
+
+  for _, line in ipairs(vim.fn.systemlist('tmux list-sessions -F "#{?session_attached,1,0}|#{session_name}|#{session_path}|#{@floating}|#{@floating-parent}"')) do
+    local is_current, name, path, is_float, float_parent = line:match("^(%d)|([^|]+)|([^|]*)|([^|]*)|(.*)$")
+    if name then
+      if is_current == "1" then
+        current_session = name
+      elseif is_current == "0" then
+        if is_float == "1" and float_parent ~= "" then
+          if not floating[float_parent] then floating[float_parent] = {} end
+          floating[float_parent][#floating[float_parent] + 1] = {
             name = name,
             windows = windows_by_session[name] or {},
           }
+        elseif is_float ~= "1" then
+          sessions[#sessions + 1] = {
+            name = name,
+            parent = path:match("([^/]+)/[^/]+$") or "",
+            windows = windows_by_session[name] or {},
+          }
         end
-      else
-        sessions[#sessions + 1] = {
-          name = name,
-          parent = path:match("([^/]+)/[^/]+$") or "",
-          windows = windows_by_session[name] or {},
-        }
       end
     end
   end
@@ -314,20 +314,15 @@ local function get_non_current_tmux_sessions()
     return a.parent < b.parent
   end)
 
+  local session_set = {}
   for _, session in ipairs(sessions) do
+    session_set[session.name] = true
     session.floating = floating[session.name] or {}
     table.sort(session.floating, function(a, b) return a.name < b.name end)
   end
 
   for parent_name, floats in pairs(floating) do
-    if parent_name == current_session then goto continue end
-    local found = false
-    for _, session in ipairs(sessions) do
-      if session.name == parent_name then
-        found = true; break
-      end
-    end
-    if not found then
+    if parent_name ~= current_session and not session_set[parent_name] then
       for _, f in ipairs(floats) do
         sessions[#sessions + 1] = {
           name = f.name,
@@ -338,7 +333,6 @@ local function get_non_current_tmux_sessions()
         }
       end
     end
-    ::continue::
   end
 
   return sessions
@@ -346,19 +340,23 @@ end
 
 local function build_session_entries(sessions)
   local entries = {}
+  local icons = M.config.icons
+  local float_icon = icons.floating
+  local float_icon_hl = icons.floating_hl and HL_FLOATING_ICON or nil
+  local win_icon = icons.window
+  local win_icon_hl = icons.window_hl and HL_WINDOW_ICON or nil
 
   for _, session in ipairs(sessions) do
     if session.is_floating then
-      local float_icon = M.config.icons.floating
-      local float_label = (session.windows[1] and session.windows[1].name) or session.name
-      local display_str = string.format("%s  %s", float_icon, float_label)
+      local label = float_display_label(session)
+      local display_str = string.format("%s  %s", float_icon, label)
       entries[#entries + 1] = {
         type = "floating",
         session_name = session.name,
         parent = session.parent,
         display_str = display_str,
         ordinal_str = session.name,
-        icon_hl = M.config.icons.floating_hl and "TmuxerFloatingIcon" or nil,
+        icon_hl = float_icon_hl,
         icon_start = 0,
         icon_end = #float_icon,
       }
@@ -389,8 +387,7 @@ local function build_session_entries(sessions)
         local total_children = win_count + float_count
 
         for j, win in ipairs(session.windows) do
-          local child_idx = j
-          local win_is_last = (child_idx == total_children)
+          local win_is_last = (j == total_children)
           local win_key = session.name .. ":" .. win.index
           local win_is_expanded = expanded_windows[win_key]
           local pane_count = #win.panes
@@ -399,7 +396,7 @@ local function build_session_entries(sessions)
           if pane_count > 1 then
             win_indicator = win_is_expanded and "─" or "+"
           else
-            win_indicator = M.config.icons.window
+            win_indicator = win_icon
           end
 
           local win_branch = win_is_last and "└─› " or "├─› "
@@ -408,7 +405,6 @@ local function build_session_entries(sessions)
           local win_display = string.format("%s%s %s%s", prefix, win_indicator, win.name, pane_suffix)
           local icon_start = #prefix
           local icon_end = icon_start + #win_indicator
-          local icon_hl = (pane_count <= 1 and M.config.icons.window_hl) and "TmuxerWindowIcon" or nil
 
           entries[#entries + 1] = {
             type = "window",
@@ -422,7 +418,7 @@ local function build_session_entries(sessions)
             is_last = win_is_last,
             display_str = win_display,
             ordinal_str = session.name .. " " .. session.parent .. " " .. win.name,
-            icon_hl = icon_hl,
+            icon_hl = pane_count <= 1 and win_icon_hl or nil,
             icon_start = icon_start,
             icon_end = icon_end,
           }
@@ -452,10 +448,9 @@ local function build_session_entries(sessions)
         for j, float in ipairs(session.floating or {}) do
           local float_is_last = (win_count + j == total_children)
           local float_branch = float_is_last and "└─› " or "├─› "
-          local float_label = (float.windows[1] and float.windows[1].name) or float.name
+          local label = float_display_label(float)
           local float_prefix = "  " .. float_branch
-          local float_icon = M.config.icons.floating
-          local float_display = string.format("%s%s  %s", float_prefix, float_icon, float_label)
+          local float_display = string.format("%s%s  %s", float_prefix, float_icon, label)
           local float_icon_start = #float_prefix
           local float_icon_end = float_icon_start + #float_icon
 
@@ -465,8 +460,8 @@ local function build_session_entries(sessions)
             parent = session.parent,
             parent_session = session.name,
             display_str = float_display,
-            ordinal_str = session.name .. " " .. session.parent .. " floating " .. float_label,
-            icon_hl = M.config.icons.floating_hl and "TmuxerFloatingIcon" or nil,
+            ordinal_str = session.name .. " " .. session.parent .. " floating " .. label,
+            icon_hl = float_icon_hl,
             icon_start = float_icon_start,
             icon_end = float_icon_end,
           }
@@ -498,17 +493,17 @@ local function switch_to_pane(session_name, window_index, pane_index)
   })
 end
 
-local function get_tmux_option(name, default)
-  local val = vim.fn.system(string.format("tmux show-option -gv %s 2>/dev/null", name)):gsub("%s+$", "")
-  return val ~= "" and val or default
-end
-
 local function popup_session(session_name)
-  local w = get_tmux_option("@popup-width", "80%")
-  local h = get_tmux_option("@popup-height", "80%")
-  local s = get_tmux_option("@popup-border", "fg=#232728")
+  local raw = vim.fn.system(
+    'tmux display-message -p "#{@popup-width}|#{@popup-height}|#{@popup-border}"'
+  ):gsub("%s+$", "")
+  local w, h, s = raw:match("^([^|]*)|([^|]*)|(.*)$")
+  w = (w and w ~= "") and w or "80%"
+  h = (h and h ~= "") and h or "80%"
+  s = (s and s ~= "") and s or "fg=#232728"
   vim.fn.jobstart(
-    string.format("tmux popup -E -w %s -h %s -S '%s' 'tmux attach -t %s'", w, h, s, session_name)
+    string.format("tmux popup -E -w %s -h %s -S '%s' 'tmux attach -t %s'",
+      w, h, s, vim.fn.shellescape(session_name))
   )
 end
 
@@ -600,7 +595,9 @@ function M.tmux_sessions(opts)
     sorter = create_preserve_order_sorter(),
     attach_mappings = function(prompt_bufnr, map)
       actions.select_default:replace(function()
-        local entry = action_state.get_selected_entry().value
+        local sel = action_state.get_selected_entry()
+        if not sel then return end
+        local entry = sel.value
         actions.close(prompt_bufnr)
         if entry.type == "floating" then
           popup_session(entry.session_name)
@@ -634,41 +631,33 @@ function M.tmux_sessions(opts)
         local entry = sel.value
         local picker = action_state.get_current_picker(prompt_bufnr)
 
-
+        local tbl, key, find_type, find_win_idx
         if entry.type == "session" then
-          local is_expanded = expanded_sessions[entry.session_name]
-          if expand and not is_expanded then
-            expanded_sessions[entry.session_name] = true
-          elseif not expand and is_expanded then
-            expanded_sessions[entry.session_name] = nil
-          else
-            return
-          end
-          picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
-          vim.defer_fn(function()
-            if vim.api.nvim_buf_is_valid(prompt_bufnr) then
-              local idx = find_entry_index(picker, "session", entry.session_name)
-              if idx then picker:set_selection(picker:get_row(idx)) end
-            end
-          end, 10)
+          tbl, key = expanded_sessions, entry.session_name
+          find_type = "session"
         elseif entry.type == "window" and entry.pane_count > 1 then
-          local win_key = entry.session_name .. ":" .. entry.window_index
-          local is_expanded = expanded_windows[win_key]
-          if expand and not is_expanded then
-            expanded_windows[win_key] = true
-          elseif not expand and is_expanded then
-            expanded_windows[win_key] = nil
-          else
-            return
-          end
-          picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
-          vim.defer_fn(function()
-            if vim.api.nvim_buf_is_valid(prompt_bufnr) then
-              local idx = find_entry_index(picker, "window", entry.session_name, entry.window_index)
-              if idx then picker:set_selection(picker:get_row(idx)) end
-            end
-          end, 10)
+          tbl, key = expanded_windows, entry.session_name .. ":" .. entry.window_index
+          find_type, find_win_idx = "window", entry.window_index
+        else
+          return
         end
+
+        local is_expanded = tbl[key]
+        if expand and not is_expanded then
+          tbl[key] = true
+        elseif not expand and is_expanded then
+          tbl[key] = nil
+        else
+          return
+        end
+
+        picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
+        vim.defer_fn(function()
+          if vim.api.nvim_buf_is_valid(prompt_bufnr) then
+            local idx = find_entry_index(picker, find_type, entry.session_name, find_win_idx)
+            if idx then picker:set_selection(picker:get_row(idx)) end
+          end
+        end, 10)
       end
 
       map("i", "<Right>", function() toggle_expand(true) end)
@@ -716,16 +705,13 @@ function M.tmux_sessions(opts)
 
         local sessions_to_kill, windows_to_kill = {}, {}
         for _, entry in ipairs(entries) do
-          if entry.type == "session" then
-            sessions_to_kill[entry.session_name] = true
-          elseif entry.type == "floating" then
+          if entry.type == "session" or entry.type == "floating" then
             sessions_to_kill[entry.session_name] = true
           elseif not sessions_to_kill[entry.session_name] then
             windows_to_kill[#windows_to_kill + 1] = { session = entry.session_name, index = entry.window_index }
           end
         end
 
-        -- Also kill floating sessions belonging to killed sessions
         for _, session in ipairs(state.sessions) do
           if sessions_to_kill[session.name] and session.floating then
             for _, float in ipairs(session.floating) do
@@ -782,10 +768,10 @@ function M.setup(opts)
 
   local icons = M.config.icons
   if icons.window_hl then
-    vim.api.nvim_set_hl(0, "TmuxerWindowIcon", icons.window_hl)
+    vim.api.nvim_set_hl(0, HL_WINDOW_ICON, icons.window_hl)
   end
   if icons.floating_hl then
-    vim.api.nvim_set_hl(0, "TmuxerFloatingIcon", icons.floating_hl)
+    vim.api.nvim_set_hl(0, HL_FLOATING_ICON, icons.floating_hl)
   end
 
   if #M.workspaces > 0 then
