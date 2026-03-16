@@ -319,7 +319,6 @@ local function get_non_current_tmux_sessions()
     table.sort(session.floating, function(a, b) return a.name < b.name end)
   end
 
-  -- Skip floating sessions whose parent is the current session
   for parent_name, floats in pairs(floating) do
     if parent_name == current_session then goto continue end
     local found = false
@@ -351,7 +350,8 @@ local function build_session_entries(sessions)
   for _, session in ipairs(sessions) do
     if session.is_floating then
       local float_icon = M.config.icons.floating
-      local display_str = string.format("%s  %s", float_icon, session.name)
+      local float_label = (session.windows[1] and session.windows[1].name) or session.name
+      local display_str = string.format("%s  %s", float_icon, float_label)
       entries[#entries + 1] = {
         type = "floating",
         session_name = session.name,
@@ -452,7 +452,7 @@ local function build_session_entries(sessions)
         for j, float in ipairs(session.floating or {}) do
           local float_is_last = (win_count + j == total_children)
           local float_branch = float_is_last and "└─› " or "├─› "
-          local float_label = float.name
+          local float_label = (float.windows[1] and float.windows[1].name) or float.name
           local float_prefix = "  " .. float_branch
           local float_icon = M.config.icons.floating
           local float_display = string.format("%s%s  %s", float_prefix, float_icon, float_label)
