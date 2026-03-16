@@ -25,7 +25,6 @@ M.config = {
   border = true,
   show_archive = false,
   max_depth = 2,
-  floating_suffix = "_floating",
   icons = {
     window = "□",
     window_hl = nil,
@@ -274,6 +273,12 @@ local function get_all_windows_batched()
   return windows_by_session
 end
 
+local function get_session_option(session_name, option)
+  local val = vim.fn.system(string.format("tmux show-option -t %s -v %s 2>/dev/null",
+    vim.fn.shellescape(session_name), option)):gsub("%s+$", "")
+  return val ~= "" and val or nil
+end
+
 local function get_non_current_tmux_sessions()
   local windows_by_session = get_all_windows_batched()
   local sessions = {}
@@ -284,14 +289,16 @@ local function get_non_current_tmux_sessions()
     if name and is_current == "1" then
       current_session = name
     elseif name and is_current == "0" then
-      local suffix = M.config.floating_suffix:gsub("([%.%+%-%*%?%[%]%^%$%(%)%%])", "%%%1")
-      local parent_name = name:match("^(.+)" .. suffix .. "[_%d]*$")
-      if parent_name then
-        if not floating[parent_name] then floating[parent_name] = {} end
-        floating[parent_name][#floating[parent_name] + 1] = {
-          name = name,
-          windows = windows_by_session[name] or {},
-        }
+      local is_floating = get_session_option(name, "@floating")
+      if is_floating then
+        local parent_name = get_session_option(name, "@floating-parent") or ""
+        if parent_name ~= "" then
+          if not floating[parent_name] then floating[parent_name] = {} end
+          floating[parent_name][#floating[parent_name] + 1] = {
+            name = name,
+            windows = windows_by_session[name] or {},
+          }
+        end
       else
         sessions[#sessions + 1] = {
           name = name,
@@ -317,7 +324,9 @@ local function get_non_current_tmux_sessions()
     if parent_name == current_session then goto continue end
     local found = false
     for _, session in ipairs(sessions) do
-      if session.name == parent_name then found = true; break end
+      if session.name == parent_name then
+        found = true; break
+      end
     end
     if not found then
       for _, f in ipairs(floats) do
@@ -443,8 +452,7 @@ local function build_session_entries(sessions)
         for j, float in ipairs(session.floating or {}) do
           local float_is_last = (win_count + j == total_children)
           local float_branch = float_is_last and "└─› " or "├─› "
-          local suffix_pattern = M.config.floating_suffix:gsub("([%.%+%-%*%?%[%]%^%$%(%)%%])", "%%%1")
-          local float_label = float.name:match(suffix_pattern .. "_(%d+)$") or "default"
+          local float_label = float.name
           local float_prefix = "  " .. float_branch
           local float_icon = M.config.icons.floating
           local float_display = string.format("%s%s  %s", float_prefix, float_icon, float_label)
@@ -526,23 +534,21 @@ local function create_session_finder(sessions)
   }
 end
 
--- Custom sorter that filters but preserves original order
 local function create_preserve_order_sorter()
   return sorters.new {
     scoring_function = function(_, prompt, _, entry)
       if not prompt or prompt == "" then
-        return 1 -- Show all entries with same score
+        return 1
       end
 
       local ordinal = entry.ordinal:lower()
       local search = prompt:lower()
 
-      -- Check if entry matches (simple substring match)
       if ordinal:find(search, 1, true) then
-        return 1 -- All matches get same score to preserve order
+        return 1
       end
 
-      return -1 -- Filter out non-matches
+      return -1
     end,
     highlighter = function(_, prompt, display)
       if not prompt or prompt == "" then return {} end

@@ -69,7 +69,6 @@ return {
         width = 0.5,
         height = 0.31,
       },
-      floating_suffix = "_floating",
       icons = {
         window = "□",
         window_hl = { fg = "#A9B665" },
@@ -121,10 +120,6 @@ Show archived projects by default (default: `false`)
 
 Telescope layout dimensions (default: `{ height = 15, width = 80 }`)
 
-`floating_suffix`
-
-Suffix used to detect floating sessions (default: `"_floating"`)
-
 `icons.window`
 
 Icon for windows in the session picker (default: `"□"`)
@@ -149,7 +144,7 @@ Opens a Telescope picker to browse Git projects within configured workspaces and
 
 `:TmuxSwitchSession`
 
-Lists all non-attached tmux sessions in a tree view. Sessions can be expanded to show windows and panes. Floating sessions are nested under their parent and open as popups. Popup dimensions are read from tmux options `@popup-width`, `@popup-height`, and `@popup-border`.
+Lists all non-attached tmux sessions in a tree view. Sessions can be expanded to show windows and panes. Floating sessions (detected via tmux `@floating` session option) are nested under their parent and open as popups. Popup dimensions are read from tmux options `@popup-width`, `@popup-height`, and `@popup-border`.
 
 `:TmuxToggleArchive`
 
