@@ -44,7 +44,7 @@ Fd command (optional, falls back to find if not available)
 
 To configure the plugin with [lazy.nvim](https://github.com/folke/lazy.nvim), use the following setup:
 
-```
+```lua
 return {
   "dkooll/tmuxer.nvim",
   dependencies = { "nvim-telescope/telescope.nvim" },
@@ -72,7 +72,9 @@ return {
       floating_suffix = "_floating",
       icons = {
         window = "□",
+        window_hl = { fg = "#A9B665" },
         floating = "⧉",
+        floating_hl = { fg = "#D3869B" },
       },
     })
   end,
@@ -130,6 +132,14 @@ Icon for windows in the session picker (default: `"□"`)
 `icons.floating`
 
 Icon for floating sessions in the session picker (default: `"⧉"`)
+
+`icons.window_hl`
+
+Highlight group for the window icon (default: `nil`, e.g. `{ fg = "#A9B665" }`)
+
+`icons.floating_hl`
+
+Highlight group for the floating icon (default: `nil`, e.g. `{ fg = "#D3869B" }`)
 
 ## Commands
 
