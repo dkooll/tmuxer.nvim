@@ -399,10 +399,9 @@ local function build_session_entries(sessions)
             win_indicator = win_icon
           end
 
-          local win_branch = win_is_last and "└─› " or "├─› "
           local pane_suffix = pane_count > 1 and string.format(": %d panes", pane_count) or ""
-          local prefix = "  " .. win_branch
-          local win_display = string.format("%s%s %s%s", prefix, win_indicator, win.name, pane_suffix)
+          local prefix = "  \t"
+          local win_display = string.format("%s%s  %s%s", prefix, win_indicator, win.name, pane_suffix)
           local icon_start = #prefix
           local icon_end = icon_start + #win_indicator
 
@@ -424,11 +423,9 @@ local function build_session_entries(sessions)
           }
 
           if win_is_expanded and pane_count > 1 then
-            for k, pane in ipairs(win.panes) do
-              local pane_is_last = (k == pane_count)
-              local pane_prefix = win_is_last and "      " or "  │   "
-              local pane_branch = pane_is_last and "└─› " or "├─› "
-              local pane_display = string.format("%s%s%d: %s", pane_prefix, pane_branch, pane.index, pane.command)
+            for _, pane in ipairs(win.panes) do
+              local pane_prefix = "    \t"
+              local pane_display = string.format("%s%d: %s", pane_prefix, pane.index, pane.command)
 
               entries[#entries + 1] = {
                 type = "pane",
@@ -446,10 +443,8 @@ local function build_session_entries(sessions)
         end
 
         for j, float in ipairs(session.floating or {}) do
-          local float_is_last = (win_count + j == total_children)
-          local float_branch = float_is_last and "└─› " or "├─› "
           local label = float_display_label(float)
-          local float_prefix = "  " .. float_branch
+          local float_prefix = "  \t"
           local float_display = string.format("%s%s  %s", float_prefix, float_icon, label)
           local float_icon_start = #float_prefix
           local float_icon_end = float_icon_start + #float_icon
