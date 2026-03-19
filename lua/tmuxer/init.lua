@@ -401,7 +401,7 @@ local function build_session_entries(sessions)
 
           local pane_suffix = pane_count > 1 and string.format(": %d panes", pane_count) or ""
           local prefix = "   \t"
-          local win_display = string.format("%s%s  %s%s", prefix, win_indicator, win.name, pane_suffix)
+          local win_display = string.format("%s%s %s%s", prefix, win_indicator, win.name, pane_suffix)
           local icon_start = #prefix
           local icon_end = icon_start + #win_indicator
 
