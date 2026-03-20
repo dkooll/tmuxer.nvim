@@ -354,7 +354,7 @@ local function build_session_entries(sessions)
   for _, session in ipairs(sessions) do
     if session.is_floating then
       local label = float_display_label(session)
-      local display_str = string.format("%s  %s", float_icon, label)
+      local display_str = string.format("%s %s", float_icon, label)
       entries[#entries + 1] = {
         type = "floating",
         session_name = session.name,
@@ -428,7 +428,7 @@ local function build_session_entries(sessions)
           if win_is_expanded and pane_count > 1 then
             for _, pane in ipairs(win.panes) do
               local pane_prefix = "      \t"
-              local pane_display = string.format("%s%s  %s", pane_prefix, pane_icon, pane.command)
+              local pane_display = string.format("%s%s %s", pane_prefix, pane_icon, pane.command)
               local pane_icon_start = #pane_prefix
               local pane_icon_end = pane_icon_start + #pane_icon
 
@@ -453,7 +453,7 @@ local function build_session_entries(sessions)
         for _, float in ipairs(session.floating or {}) do
           local label = float_display_label(float)
           local float_prefix = "   \t"
-          local float_display = string.format("%s%s  %s", float_prefix, float_icon, label)
+          local float_display = string.format("%s%s %s", float_prefix, float_icon, label)
           local float_icon_start = #float_prefix
           local float_icon_end = float_icon_start + #float_icon
 
