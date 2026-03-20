@@ -35,7 +35,7 @@ M.config = {
     floating = "▣",
     floating_hl = nil,
     pane = "▪",
-    pane_hl = { fg = "#2d6b3f" },
+    pane_hl = nil,
   },
 }
 
@@ -349,7 +349,7 @@ local function build_session_entries(sessions)
   local win_icon = icons.window
   local win_icon_hl = icons.window_hl and HL_WINDOW_ICON or nil
   local pane_icon = icons.pane
-  local pane_icon_hl = icons.pane_hl and HL_PANE_ICON or nil
+  local pane_icon_hl = icons.pane_hl and HL_PANE_ICON or win_icon_hl
 
   for _, session in ipairs(sessions) do
     if session.is_floating then
@@ -452,7 +452,7 @@ local function build_session_entries(sessions)
 
         for _, float in ipairs(session.floating or {}) do
           local label = float_display_label(float)
-          local float_prefix = "  \t"
+          local float_prefix = "   \t"
           local float_display = string.format("%s%s  %s", float_prefix, float_icon, label)
           local float_icon_start = #float_prefix
           local float_icon_end = float_icon_start + #float_icon
