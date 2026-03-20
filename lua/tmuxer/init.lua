@@ -15,7 +15,6 @@ end
 local project_cache = {}
 local expanded_sessions = {}
 local expanded_windows = {}
-local expanded_floating = {}
 local has_fd = vim.fn.executable('fd') == 1
 
 local HL_WINDOW_ICON = "TmuxerWindowIcon"
@@ -367,23 +366,12 @@ local function build_session_entries(sessions)
         icon_end = #float_icon,
       }
     else
-      local show_windows = expanded_sessions[session.name]
-      local show_floats = expanded_floating[session.name]
+      local is_expanded = expanded_sessions[session.name]
       local win_count = #session.windows
       local float_count = #(session.floating or {})
       local has_children = win_count > 0 or float_count > 0
 
-      -- check if any window in this session has panes expanded
-      local has_panes_expanded = false
-      for _, win in ipairs(session.windows) do
-        if expanded_windows[session.name .. ":" .. win.index] then
-          has_panes_expanded = true
-          break
-        end
-      end
-
-      local any_open = show_windows or show_floats or has_panes_expanded
-      local session_indicator = has_children and (any_open and "─" or "+") or " "
+      local session_indicator = has_children and (is_expanded and "─" or "+") or " "
       local window_suffix = win_count == 1 and ": 1 window" or string.format(": %d windows", win_count)
       if float_count > 0 then
         window_suffix = window_suffix .. string.format(", %d floating", float_count)
@@ -395,75 +383,69 @@ local function build_session_entries(sessions)
         session_name = session.name,
         parent = session.parent,
         window_count = win_count,
-        expanded = show_windows,
+        expanded = is_expanded,
         display_str = display_str,
         ordinal_str = session.name .. " " .. session.parent,
       }
 
-      -- show windows when expanded_sessions OR when a window has panes expanded
-      if show_windows or has_panes_expanded then
+      if is_expanded then
         for _, win in ipairs(session.windows) do
           local win_key = session.name .. ":" .. win.index
           local win_is_expanded = expanded_windows[win_key]
           local pane_count = #win.panes
 
-          -- skip windows without panes when only panes mode is active
-          if show_windows or (has_panes_expanded and win_is_expanded) then
-            local expand_indicator = ""
-            if pane_count > 1 then
-              expand_indicator = win_is_expanded and "─ " or "+ "
-            end
+          local expand_indicator = ""
+          if pane_count > 1 then
+            expand_indicator = win_is_expanded and "─ " or "+ "
+          end
 
-            local pane_suffix = pane_count > 1 and string.format(": %d panes", pane_count) or ""
-            local prefix = "   \t"
-            local win_display = string.format("%s%s%s %s%s", prefix, expand_indicator, win_icon, win.name, pane_suffix)
-            local icon_start = #prefix + #expand_indicator
-            local icon_end = icon_start + #win_icon
+          local pane_suffix = pane_count > 1 and string.format(": %d panes", pane_count) or ""
+          local prefix = "   \t"
+          local win_display = string.format("%s%s%s %s%s", prefix, expand_indicator, win_icon, win.name, pane_suffix)
+          local icon_start = #prefix + #expand_indicator
+          local icon_end = icon_start + #win_icon
 
-            entries[#entries + 1] = {
-              type = "window",
-              session_name = session.name,
-              parent = session.parent,
-              window_index = win.index,
-              window_name = win.name,
-              pane_count = pane_count,
-              panes = win.panes,
-              expanded = win_is_expanded,
-              display_str = win_display,
-              ordinal_str = session.name .. " " .. session.parent .. " " .. win.name,
-              icon_hl = win_icon_hl,
-              icon_start = icon_start,
-              icon_end = icon_end,
-            }
+          entries[#entries + 1] = {
+            type = "window",
+            session_name = session.name,
+            parent = session.parent,
+            window_index = win.index,
+            window_name = win.name,
+            pane_count = pane_count,
+            panes = win.panes,
+            expanded = win_is_expanded,
+            display_str = win_display,
+            ordinal_str = session.name .. " " .. session.parent .. " " .. win.name,
+            icon_hl = win_icon_hl,
+            icon_start = icon_start,
+            icon_end = icon_end,
+          }
 
-            if win_is_expanded and pane_count > 1 then
-              for _, pane in ipairs(win.panes) do
-                local pane_prefix = "      \t"
-                local pane_display = string.format("%s%s %s", pane_prefix, pane_icon, pane.command)
-                local pane_icon_start = #pane_prefix
-                local pane_icon_end = pane_icon_start + #pane_icon
+          if win_is_expanded and pane_count > 1 then
+            for _, pane in ipairs(win.panes) do
+              local pane_prefix = "      \t"
+              local pane_display = string.format("%s%s %s", pane_prefix, pane_icon, pane.command)
+              local pane_icon_start = #pane_prefix
+              local pane_icon_end = pane_icon_start + #pane_icon
 
-                entries[#entries + 1] = {
-                  type = "pane",
-                  session_name = session.name,
-                  parent = session.parent,
-                  window_index = win.index,
-                  window_name = win.name,
-                  pane_index = pane.index,
-                  pane_command = pane.command,
-                  display_str = pane_display,
-                  ordinal_str = session.name .. " " .. session.parent .. " " .. win.name .. " " .. pane.command,
-                  icon_hl = pane_icon_hl,
-                  icon_start = pane_icon_start,
-                  icon_end = pane_icon_end,
-                }
-              end
+              entries[#entries + 1] = {
+                type = "pane",
+                session_name = session.name,
+                parent = session.parent,
+                window_index = win.index,
+                window_name = win.name,
+                pane_index = pane.index,
+                pane_command = pane.command,
+                display_str = pane_display,
+                ordinal_str = session.name .. " " .. session.parent .. " " .. win.name .. " " .. pane.command,
+                icon_hl = pane_icon_hl,
+                icon_start = pane_icon_start,
+                icon_end = pane_icon_end,
+              }
             end
           end
         end
-      end
 
-      if show_floats then
         for _, float in ipairs(session.floating or {}) do
           local label = float_display_label(float)
           local float_prefix = "   \t"
@@ -599,7 +581,6 @@ function M.tmux_sessions(opts)
 
   expanded_sessions = {}
   expanded_windows = {}
-  expanded_floating = {}
   local state = { sessions = get_non_current_tmux_sessions() }
 
   local function refresh_state(prompt_bufnr)
@@ -681,18 +662,14 @@ function M.tmux_sessions(opts)
       map("i", "<Right>", function() toggle_expand(true) end)
       map("i", "<Left>", function() toggle_expand(false) end)
 
-      local function toggle_all()
+      map("i", "<C-e>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
-        if next(expanded_sessions) ~= nil or next(expanded_windows) ~= nil or next(expanded_floating) ~= nil then
+        if next(expanded_sessions) ~= nil or next(expanded_windows) ~= nil then
           expanded_sessions = {}
           expanded_windows = {}
-          expanded_floating = {}
         else
           for _, session in ipairs(state.sessions) do
             expanded_sessions[session.name] = true
-            if #(session.floating or {}) > 0 then
-              expanded_floating[session.name] = true
-            end
             for _, win in ipairs(session.windows) do
               if #win.panes > 1 then
                 expanded_windows[session.name .. ":" .. win.index] = true
@@ -701,54 +678,7 @@ function M.tmux_sessions(opts)
           end
         end
         picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
-      end
-
-      local function toggle_windows()
-        local picker = action_state.get_current_picker(prompt_bufnr)
-        if next(expanded_sessions) ~= nil then
-          expanded_sessions = {}
-        else
-          for _, session in ipairs(state.sessions) do
-            expanded_sessions[session.name] = true
-          end
-        end
-        picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
-      end
-
-      local function toggle_floating()
-        local picker = action_state.get_current_picker(prompt_bufnr)
-        if next(expanded_floating) ~= nil then
-          expanded_floating = {}
-        else
-          for _, session in ipairs(state.sessions) do
-            if #(session.floating or {}) > 0 then
-              expanded_floating[session.name] = true
-            end
-          end
-        end
-        picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
-      end
-
-      local function toggle_panes()
-        local picker = action_state.get_current_picker(prompt_bufnr)
-        if next(expanded_windows) ~= nil then
-          expanded_windows = {}
-        else
-          for _, session in ipairs(state.sessions) do
-            for _, win in ipairs(session.windows) do
-              if #win.panes > 1 then
-                expanded_windows[session.name .. ":" .. win.index] = true
-              end
-            end
-          end
-        end
-        picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
-      end
-
-      map("i", "<C-e>", toggle_all)
-      map("i", "<C-s>", toggle_windows)
-      map("i", "<C-f>", toggle_floating)
-      map("i", "<C-a>", toggle_panes)
+      end)
 
       map("i", "<C-d>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
