@@ -687,36 +687,17 @@ function M.tmux_sessions(opts)
         picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
       end
 
-      local function toggle_panes_for_selected()
-        local sel = action_state.get_selected_entry()
-        if not sel then return end
-        local entry = sel.value
-
-        local session_name, window_index
-        if entry.type == "window" and entry.pane_count > 1 then
-          session_name = entry.session_name
-          window_index = entry.window_index
-        elseif entry.type == "pane" then
-          session_name = entry.session_name
-          window_index = entry.window_index
-        else
-          return
-        end
-
+      local function toggle_windows()
         local picker = action_state.get_current_picker(prompt_bufnr)
-        local key = session_name .. ":" .. window_index
-        if expanded_windows[key] then
-          expanded_windows[key] = nil
+        if next(expanded_sessions) ~= nil then
+          expanded_sessions = {}
+          expanded_windows = {}
         else
-          expanded_windows[key] = true
+          for _, session in ipairs(state.sessions) do
+            expanded_sessions[session.name] = true
+          end
         end
         picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
-        vim.defer_fn(function()
-          if vim.api.nvim_buf_is_valid(prompt_bufnr) then
-            local idx = find_entry_index(picker, "window", session_name, window_index)
-            if idx then picker:set_selection(picker:get_row(idx)) end
-          end
-        end, 10)
       end
 
       local function toggle_floating()
@@ -734,7 +715,7 @@ function M.tmux_sessions(opts)
       end
 
       map("i", "<C-e>", toggle_all)
-      map("i", "<C-g>", toggle_panes_for_selected)
+      map("i", "<C-s>", toggle_windows)
       map("i", "<C-f>", toggle_floating)
 
       map("i", "<C-d>", function()
