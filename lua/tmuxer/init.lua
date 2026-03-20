@@ -19,6 +19,7 @@ local has_fd = vim.fn.executable('fd') == 1
 
 local HL_WINDOW_ICON = "TmuxerWindowIcon"
 local HL_FLOATING_ICON = "TmuxerFloatingIcon"
+local HL_PANE_ICON = "TmuxerPaneIcon"
 
 M.config = {
   nvim_alias = "nvim",
@@ -33,6 +34,8 @@ M.config = {
     window_hl = nil,
     floating = "⧉",
     floating_hl = nil,
+    pane = "▫",
+    pane_hl = nil,
   },
 }
 
@@ -345,6 +348,8 @@ local function build_session_entries(sessions)
   local float_icon_hl = icons.floating_hl and HL_FLOATING_ICON or nil
   local win_icon = icons.window
   local win_icon_hl = icons.window_hl and HL_WINDOW_ICON or nil
+  local pane_icon = icons.pane
+  local pane_icon_hl = icons.pane_hl and HL_PANE_ICON or nil
 
   for _, session in ipairs(sessions) do
     if session.is_floating then
@@ -392,18 +397,16 @@ local function build_session_entries(sessions)
           local win_is_expanded = expanded_windows[win_key]
           local pane_count = #win.panes
 
-          local win_indicator
+          local expand_indicator = ""
           if pane_count > 1 then
-            win_indicator = win_is_expanded and "─" or "+"
-          else
-            win_indicator = win_icon
+            expand_indicator = win_is_expanded and "─ " or "+ "
           end
 
           local pane_suffix = pane_count > 1 and string.format(": %d panes", pane_count) or ""
           local prefix = "   \t"
-          local win_display = string.format("%s%s %s%s", prefix, win_indicator, win.name, pane_suffix)
-          local icon_start = #prefix
-          local icon_end = icon_start + #win_indicator
+          local win_display = string.format("%s%s%s %s%s", prefix, expand_indicator, win_icon, win.name, pane_suffix)
+          local icon_start = #prefix + #expand_indicator
+          local icon_end = icon_start + #win_icon
 
           entries[#entries + 1] = {
             type = "window",
@@ -417,15 +420,17 @@ local function build_session_entries(sessions)
             is_last = win_is_last,
             display_str = win_display,
             ordinal_str = session.name .. " " .. session.parent .. " " .. win.name,
-            icon_hl = pane_count <= 1 and win_icon_hl or nil,
+            icon_hl = win_icon_hl,
             icon_start = icon_start,
             icon_end = icon_end,
           }
 
           if win_is_expanded and pane_count > 1 then
             for _, pane in ipairs(win.panes) do
-              local pane_prefix = "    \t"
-              local pane_display = string.format("%s%d: %s", pane_prefix, pane.index, pane.command)
+              local pane_prefix = "      \t"
+              local pane_display = string.format("%s%s  %s", pane_prefix, pane_icon, pane.command)
+              local pane_icon_start = #pane_prefix
+              local pane_icon_end = pane_icon_start + #pane_icon
 
               entries[#entries + 1] = {
                 type = "pane",
@@ -437,12 +442,15 @@ local function build_session_entries(sessions)
                 pane_command = pane.command,
                 display_str = pane_display,
                 ordinal_str = session.name .. " " .. session.parent .. " " .. win.name .. " " .. pane.command,
+                icon_hl = pane_icon_hl,
+                icon_start = pane_icon_start,
+                icon_end = pane_icon_end,
               }
             end
           end
         end
 
-        for j, float in ipairs(session.floating or {}) do
+        for _, float in ipairs(session.floating or {}) do
           local label = float_display_label(float)
           local float_prefix = "  \t"
           local float_display = string.format("%s%s  %s", float_prefix, float_icon, label)
@@ -767,6 +775,9 @@ function M.setup(opts)
   end
   if icons.floating_hl then
     vim.api.nvim_set_hl(0, HL_FLOATING_ICON, icons.floating_hl)
+  end
+  if icons.pane_hl then
+    vim.api.nvim_set_hl(0, HL_PANE_ICON, icons.pane_hl)
   end
 
   if #M.workspaces > 0 then
