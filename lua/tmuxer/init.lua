@@ -35,7 +35,7 @@ M.config = {
     floating = "⧉",
     floating_hl = nil,
     pane = "▫",
-    pane_hl = nil,
+    pane_hl = { fg = "#2d6b3f", bg = "#2d6b3f" },
   },
 }
 
