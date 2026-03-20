@@ -691,7 +691,6 @@ function M.tmux_sessions(opts)
         local picker = action_state.get_current_picker(prompt_bufnr)
         if next(expanded_sessions) ~= nil then
           expanded_sessions = {}
-          expanded_windows = {}
         else
           for _, session in ipairs(state.sessions) do
             expanded_sessions[session.name] = true
