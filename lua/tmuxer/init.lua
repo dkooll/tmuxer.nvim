@@ -372,9 +372,7 @@ local function build_session_entries(sessions)
       local win_count = #session.windows
       local float_count = #(session.floating or {})
       local has_children = win_count > 0 or float_count > 0
-      local any_expanded = is_expanded or is_float_expanded
-
-      local session_indicator = has_children and (any_expanded and "─" or "+") or " "
+      local session_indicator = has_children and ((is_expanded or is_float_expanded) and "─" or "+") or " "
       local window_suffix = win_count == 1 and ": 1 window" or string.format(": %d windows", win_count)
       if float_count > 0 then
         window_suffix = window_suffix .. string.format(", %d floating", float_count)
@@ -450,7 +448,7 @@ local function build_session_entries(sessions)
         end
       end
 
-      if is_expanded or is_float_expanded then
+      if is_float_expanded then
         for _, float in ipairs(session.floating or {}) do
           local label = float_display_label(float)
           local float_prefix = "   \t"
@@ -677,6 +675,9 @@ function M.tmux_sessions(opts)
         else
           for _, session in ipairs(state.sessions) do
             expanded_sessions[session.name] = true
+            if #(session.floating or {}) > 0 then
+              expanded_floating[session.name] = true
+            end
             for _, win in ipairs(session.windows) do
               if #win.panes > 1 then
                 expanded_windows[session.name .. ":" .. win.index] = true
@@ -713,9 +714,27 @@ function M.tmux_sessions(opts)
         picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
       end
 
+      local function toggle_panes()
+        local picker = action_state.get_current_picker(prompt_bufnr)
+        if next(expanded_windows) ~= nil then
+          expanded_windows = {}
+        else
+          for _, session in ipairs(state.sessions) do
+            for _, win in ipairs(session.windows) do
+              if #win.panes > 1 then
+                expanded_sessions[session.name] = true
+                expanded_windows[session.name .. ":" .. win.index] = true
+              end
+            end
+          end
+        end
+        picker:refresh(create_session_finder(state.sessions), { reset_prompt = false })
+      end
+
       map("i", "<C-e>", toggle_all)
       map("i", "<C-s>", toggle_windows)
       map("i", "<C-f>", toggle_floating)
+      map("i", "<C-a>", toggle_panes)
 
       map("i", "<C-d>", function()
         local picker = action_state.get_current_picker(prompt_bufnr)
