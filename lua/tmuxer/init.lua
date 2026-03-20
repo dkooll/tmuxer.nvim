@@ -15,6 +15,7 @@ end
 local project_cache = {}
 local expanded_sessions = {}
 local expanded_windows = {}
+local expanded_floating = {}
 local has_fd = vim.fn.executable('fd') == 1
 
 local HL_WINDOW_ICON = "TmuxerWindowIcon"
@@ -367,11 +368,13 @@ local function build_session_entries(sessions)
       }
     else
       local is_expanded = expanded_sessions[session.name]
+      local is_float_expanded = expanded_floating[session.name]
       local win_count = #session.windows
       local float_count = #(session.floating or {})
       local has_children = win_count > 0 or float_count > 0
+      local any_expanded = is_expanded or is_float_expanded
 
-      local session_indicator = has_children and (is_expanded and "─" or "+") or " "
+      local session_indicator = has_children and (any_expanded and "─" or "+") or " "
       local window_suffix = win_count == 1 and ": 1 window" or string.format(": %d windows", win_count)
       if float_count > 0 then
         window_suffix = window_suffix .. string.format(", %d floating", float_count)
@@ -389,10 +392,7 @@ local function build_session_entries(sessions)
       }
 
       if is_expanded then
-        local total_children = win_count + float_count
-
-        for j, win in ipairs(session.windows) do
-          local win_is_last = (j == total_children)
+        for _, win in ipairs(session.windows) do
           local win_key = session.name .. ":" .. win.index
           local win_is_expanded = expanded_windows[win_key]
           local pane_count = #win.panes
@@ -417,7 +417,6 @@ local function build_session_entries(sessions)
             pane_count = pane_count,
             panes = win.panes,
             expanded = win_is_expanded,
-            is_last = win_is_last,
             display_str = win_display,
             ordinal_str = session.name .. " " .. session.parent .. " " .. win.name,
             icon_hl = win_icon_hl,
@@ -449,7 +448,9 @@ local function build_session_entries(sessions)
             end
           end
         end
+      end
 
+      if is_expanded or is_float_expanded then
         for _, float in ipairs(session.floating or {}) do
           local label = float_display_label(float)
           local float_prefix = "   \t"
@@ -585,6 +586,7 @@ function M.tmux_sessions(opts)
 
   expanded_sessions = {}
   expanded_windows = {}
+  expanded_floating = {}
   local state = { sessions = get_non_current_tmux_sessions() }
 
   local function refresh_state(prompt_bufnr)
@@ -668,9 +670,10 @@ function M.tmux_sessions(opts)
 
       local function toggle_all()
         local picker = action_state.get_current_picker(prompt_bufnr)
-        if next(expanded_sessions) ~= nil or next(expanded_windows) ~= nil then
+        if next(expanded_sessions) ~= nil or next(expanded_windows) ~= nil or next(expanded_floating) ~= nil then
           expanded_sessions = {}
           expanded_windows = {}
+          expanded_floating = {}
         else
           for _, session in ipairs(state.sessions) do
             expanded_sessions[session.name] = true
@@ -718,21 +721,12 @@ function M.tmux_sessions(opts)
 
       local function toggle_floating()
         local picker = action_state.get_current_picker(prompt_bufnr)
-        local any_expanded = false
-        for _, session in ipairs(state.sessions) do
-          if #(session.floating or {}) > 0 and expanded_sessions[session.name] then
-            any_expanded = true
-            break
-          end
-        end
-
-        if any_expanded then
-          expanded_sessions = {}
-          expanded_windows = {}
+        if next(expanded_floating) ~= nil then
+          expanded_floating = {}
         else
           for _, session in ipairs(state.sessions) do
             if #(session.floating or {}) > 0 then
-              expanded_sessions[session.name] = true
+              expanded_floating[session.name] = true
             end
           end
         end
@@ -740,7 +734,7 @@ function M.tmux_sessions(opts)
       end
 
       map("i", "<C-e>", toggle_all)
-      map("i", "<C-p>", toggle_panes_for_selected)
+      map("i", "<C-g>", toggle_panes_for_selected)
       map("i", "<C-f>", toggle_floating)
 
       map("i", "<C-d>", function()
