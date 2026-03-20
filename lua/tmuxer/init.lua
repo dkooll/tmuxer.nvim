@@ -30,12 +30,12 @@ M.config = {
   show_archive = false,
   max_depth = 2,
   icons = {
-    window = "□",
+    window = "■",
     window_hl = nil,
-    floating = "⧉",
+    floating = "▣",
     floating_hl = nil,
-    pane = "▫",
-    pane_hl = { fg = "#2d6b3f", bg = "#2d6b3f" },
+    pane = "▪",
+    pane_hl = { fg = "#2d6b3f" },
   },
 }
 
