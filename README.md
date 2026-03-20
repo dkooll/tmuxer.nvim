@@ -70,10 +70,12 @@ return {
         height = 0.31,
       },
       icons = {
-        window = "□",
+        window = "■",
         window_hl = { fg = "#A9B665" },
-        floating = "⧉",
+        floating = "▣",
         floating_hl = { fg = "#D3869B" },
+        pane = "▪",
+        pane_hl = nil,
       },
     })
   end,
@@ -122,11 +124,15 @@ Telescope layout dimensions (default: `{ height = 15, width = 80 }`)
 
 `icons.window`
 
-Icon for windows in the session picker (default: `"□"`)
+Icon for windows in the session picker (default: `"■"`)
 
 `icons.floating`
 
-Icon for floating sessions in the session picker (default: `"⧉"`)
+Icon for floating sessions in the session picker (default: `"▣"`)
+
+`icons.pane`
+
+Icon for panes in the session picker (default: `"▪"`)
 
 `icons.window_hl`
 
@@ -135,6 +141,10 @@ Highlight group for the window icon (default: `nil`, e.g. `{ fg = "#A9B665" }`)
 `icons.floating_hl`
 
 Highlight group for the floating icon (default: `nil`, e.g. `{ fg = "#D3869B" }`)
+
+`icons.pane_hl`
+
+Highlight group for the pane icon (default: `nil`, falls back to `window_hl` if not set)
 
 ## Commands
 
@@ -154,11 +164,7 @@ Toggles visibility of projects inside `archive` folders
 
 `<Right>/<Left>` - Expand/collapse current item
 
-`<C-e>` - Toggle all sessions (windows)
-
-`<C-p>` - Toggle panes only
-
-`<C-x>` - Toggle everything (sessions + panes)
+`<C-e>` - Toggle expand/collapse everything
 
 `<C-d>` - Kill selected session(s) or window(s)
 
