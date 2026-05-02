@@ -17,6 +17,9 @@ local expanded_sessions = {}
 local expanded_windows = {}
 local has_fd = vim.fn.executable('fd') == 1
 
+local HL_ARROW = "TmuxerArrow"
+vim.api.nvim_set_hl(0, HL_ARROW, { bold = true, default = true })
+
 M.config = {
   nvim_alias = "nvim",
   layout_config = { height = 15, width = 80 },
@@ -347,7 +350,7 @@ local function build_session_entries(sessions)
       local float_count = #(session.floating or {})
       local has_children = win_count > 0 or float_count > 0
 
-      local session_indicator = has_children and (is_expanded and "▾" or "▸") or " "
+      local session_indicator = has_children and (is_expanded and "-" or "+") or " "
       local window_suffix = win_count == 1 and ": 1 window" or string.format(": %d windows", win_count)
       if float_count > 0 then
         window_suffix = window_suffix .. string.format(", %d floating", float_count)
@@ -377,7 +380,10 @@ local function build_session_entries(sessions)
 
           local branch = is_last_child and "└─› " or "├─› "
           local pane_suffix = pane_count > 1 and string.format(" (%d panes)", pane_count) or ""
-          local win_display = "  " .. branch .. win.name .. pane_suffix
+          local prefix = "  " .. branch
+          local win_display = prefix .. win.name .. pane_suffix
+          local arrow_start = #prefix - 3
+          local arrow_end = arrow_start + 2
 
           entries[#entries + 1] = {
             type = "window",
@@ -390,6 +396,8 @@ local function build_session_entries(sessions)
             expanded = win_is_expanded,
             display_str = win_display,
             ordinal_str = session.name .. " " .. session.parent .. " " .. win.name,
+            arrow_start = arrow_start,
+            arrow_end = arrow_end,
           }
 
           if win_is_expanded and pane_count > 1 then
@@ -397,7 +405,10 @@ local function build_session_entries(sessions)
             for pi, pane in ipairs(win.panes) do
               local pane_is_last = pi == pane_count
               local pane_branch = pane_is_last and "└─› " or "├─› "
-              local pane_display = "  " .. pane_parent_pipe .. pane_branch .. pane.command
+              local pane_prefix = "  " .. pane_parent_pipe .. pane_branch
+              local pane_display = pane_prefix .. pane.command
+              local pane_arrow_start = #pane_prefix - 3
+              local pane_arrow_end = pane_arrow_start + 2
 
               entries[#entries + 1] = {
                 type = "pane",
@@ -409,6 +420,8 @@ local function build_session_entries(sessions)
                 pane_command = pane.command,
                 display_str = pane_display,
                 ordinal_str = session.name .. " " .. session.parent .. " " .. win.name .. " " .. pane.command,
+                arrow_start = pane_arrow_start,
+                arrow_end = pane_arrow_end,
               }
             end
           end
@@ -419,7 +432,10 @@ local function build_session_entries(sessions)
           local is_last_child = child_idx == total_children
           local label = float_display_label(float)
           local branch = is_last_child and "└─› " or "├─› "
-          local float_display = "  " .. branch .. label
+          local float_prefix = "  " .. branch
+          local float_display = float_prefix .. label
+          local float_arrow_start = #float_prefix - 3
+          local float_arrow_end = float_arrow_start + 2
 
           entries[#entries + 1] = {
             type = "floating",
@@ -428,6 +444,8 @@ local function build_session_entries(sessions)
             parent_session = session.name,
             display_str = float_display,
             ordinal_str = session.name .. " " .. session.parent .. " floating " .. label,
+            arrow_start = float_arrow_start,
+            arrow_end = float_arrow_end,
           }
         end
       end
@@ -479,7 +497,13 @@ local function create_session_finder(sessions)
     entry_maker = function(entry)
       return {
         value = entry,
-        display = entry.display_str,
+        display = function(tbl)
+          local v = tbl.value
+          if v.arrow_start then
+            return v.display_str, { { { v.arrow_start, v.arrow_end }, HL_ARROW } }
+          end
+          return v.display_str
+        end,
         ordinal = entry.ordinal_str,
       }
     end
