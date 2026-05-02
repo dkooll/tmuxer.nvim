@@ -17,10 +17,6 @@ local expanded_sessions = {}
 local expanded_windows = {}
 local has_fd = vim.fn.executable('fd') == 1
 
-local HL_WINDOW_ICON = "TmuxerWindowIcon"
-local HL_FLOATING_ICON = "TmuxerFloatingIcon"
-local HL_PANE_ICON = "TmuxerPaneIcon"
-
 M.config = {
   nvim_alias = "nvim",
   layout_config = { height = 15, width = 80 },
@@ -29,14 +25,6 @@ M.config = {
   border = true,
   show_archive = false,
   max_depth = 2,
-  icons = {
-    window = "■",
-    window_hl = nil,
-    floating = "▣",
-    floating_hl = nil,
-    pane = "▪",
-    pane_hl = nil,
-  },
 }
 
 local function apply_theme(opts)
@@ -343,27 +331,15 @@ end
 
 local function build_session_entries(sessions)
   local entries = {}
-  local icons = M.config.icons
-  local float_icon = icons.floating
-  local float_icon_hl = icons.floating_hl and HL_FLOATING_ICON or nil
-  local win_icon = icons.window
-  local win_icon_hl = icons.window_hl and HL_WINDOW_ICON or nil
-  local pane_icon = icons.pane
-  local pane_icon_hl = icons.pane_hl and HL_PANE_ICON or win_icon_hl
 
   for _, session in ipairs(sessions) do
     if session.is_floating then
-      local label = float_display_label(session)
-      local display_str = string.format("%s %s", float_icon, label)
       entries[#entries + 1] = {
         type = "floating",
         session_name = session.name,
         parent = session.parent,
-        display_str = display_str,
+        display_str = "  " .. session.name,
         ordinal_str = session.name,
-        icon_hl = float_icon_hl,
-        icon_start = 0,
-        icon_end = #float_icon,
       }
     else
       local is_expanded = expanded_sessions[session.name]
@@ -371,7 +347,7 @@ local function build_session_entries(sessions)
       local float_count = #(session.floating or {})
       local has_children = win_count > 0 or float_count > 0
 
-      local session_indicator = has_children and (is_expanded and "─" or "+") or " "
+      local session_indicator = has_children and (is_expanded and "▾" or "▸") or " "
       local window_suffix = win_count == 1 and ": 1 window" or string.format(": %d windows", win_count)
       if float_count > 0 then
         window_suffix = window_suffix .. string.format(", %d floating", float_count)
@@ -389,21 +365,19 @@ local function build_session_entries(sessions)
       }
 
       if is_expanded then
+        local total_children = win_count + float_count
+        local child_idx = 0
+
         for _, win in ipairs(session.windows) do
+          child_idx = child_idx + 1
+          local is_last_child = child_idx == total_children
           local win_key = session.name .. ":" .. win.index
           local win_is_expanded = expanded_windows[win_key]
           local pane_count = #win.panes
 
-          local expand_indicator = ""
-          if pane_count > 1 then
-            expand_indicator = win_is_expanded and "─ " or "+ "
-          end
-
-          local pane_suffix = pane_count > 1 and string.format(": %d panes", pane_count) or ""
-          local prefix = "   \t"
-          local win_display = string.format("%s%s%s %s%s", prefix, expand_indicator, win_icon, win.name, pane_suffix)
-          local icon_start = #prefix + #expand_indicator
-          local icon_end = icon_start + #win_icon
+          local branch = is_last_child and "└─▶ " or "├─▶ "
+          local pane_suffix = pane_count > 1 and string.format(" (%d panes)", pane_count) or ""
+          local win_display = "  " .. branch .. win.name .. pane_suffix
 
           entries[#entries + 1] = {
             type = "window",
@@ -416,17 +390,14 @@ local function build_session_entries(sessions)
             expanded = win_is_expanded,
             display_str = win_display,
             ordinal_str = session.name .. " " .. session.parent .. " " .. win.name,
-            icon_hl = win_icon_hl,
-            icon_start = icon_start,
-            icon_end = icon_end,
           }
 
           if win_is_expanded and pane_count > 1 then
-            for _, pane in ipairs(win.panes) do
-              local pane_prefix = "      \t"
-              local pane_display = string.format("%s%s %s", pane_prefix, pane_icon, pane.command)
-              local pane_icon_start = #pane_prefix
-              local pane_icon_end = pane_icon_start + #pane_icon
+            local pane_parent_pipe = is_last_child and "    " or "│   "
+            for pi, pane in ipairs(win.panes) do
+              local pane_is_last = pi == pane_count
+              local pane_branch = pane_is_last and "└─▶ " or "├─▶ "
+              local pane_display = "  " .. pane_parent_pipe .. pane_branch .. pane.command
 
               entries[#entries + 1] = {
                 type = "pane",
@@ -438,20 +409,17 @@ local function build_session_entries(sessions)
                 pane_command = pane.command,
                 display_str = pane_display,
                 ordinal_str = session.name .. " " .. session.parent .. " " .. win.name .. " " .. pane.command,
-                icon_hl = pane_icon_hl,
-                icon_start = pane_icon_start,
-                icon_end = pane_icon_end,
               }
             end
           end
         end
 
         for _, float in ipairs(session.floating or {}) do
+          child_idx = child_idx + 1
+          local is_last_child = child_idx == total_children
           local label = float_display_label(float)
-          local float_prefix = "   \t"
-          local float_display = string.format("%s%s %s", float_prefix, float_icon, label)
-          local float_icon_start = #float_prefix
-          local float_icon_end = float_icon_start + #float_icon
+          local branch = is_last_child and "└─▶ " or "├─▶ "
+          local float_display = "  " .. branch .. label
 
           entries[#entries + 1] = {
             type = "floating",
@@ -460,9 +428,6 @@ local function build_session_entries(sessions)
             parent_session = session.name,
             display_str = float_display,
             ordinal_str = session.name .. " " .. session.parent .. " floating " .. label,
-            icon_hl = float_icon_hl,
-            icon_start = float_icon_start,
-            icon_end = float_icon_end,
           }
         end
       end
@@ -514,14 +479,7 @@ local function create_session_finder(sessions)
     entry_maker = function(entry)
       return {
         value = entry,
-        display = function(tbl)
-          local str = tbl.value.display_str
-          local hl = {}
-          if tbl.value.icon_hl and tbl.value.icon_start then
-            hl[#hl + 1] = { { tbl.value.icon_start, tbl.value.icon_end }, tbl.value.icon_hl }
-          end
-          return str, hl
-        end,
+        display = entry.display_str,
         ordinal = entry.ordinal_str,
       }
     end
@@ -751,17 +709,6 @@ function M.setup(opts)
   opts = opts or {}
   M.config = vim.tbl_deep_extend("force", M.config, opts)
   M.workspaces = opts.workspaces or {}
-
-  local icons = M.config.icons
-  if icons.window_hl then
-    vim.api.nvim_set_hl(0, HL_WINDOW_ICON, icons.window_hl)
-  end
-  if icons.floating_hl then
-    vim.api.nvim_set_hl(0, HL_FLOATING_ICON, icons.floating_hl)
-  end
-  if icons.pane_hl then
-    vim.api.nvim_set_hl(0, HL_PANE_ICON, icons.pane_hl)
-  end
 
   if #M.workspaces > 0 then
     preload_cache(M.workspaces[1].path)
