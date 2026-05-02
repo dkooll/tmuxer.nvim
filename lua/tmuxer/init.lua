@@ -375,7 +375,7 @@ local function build_session_entries(sessions)
           local win_is_expanded = expanded_windows[win_key]
           local pane_count = #win.panes
 
-          local branch = is_last_child and "└─▶ " or "├─▶ "
+          local branch = is_last_child and "└─› " or "├─› "
           local pane_suffix = pane_count > 1 and string.format(" (%d panes)", pane_count) or ""
           local win_display = "  " .. branch .. win.name .. pane_suffix
 
@@ -396,7 +396,7 @@ local function build_session_entries(sessions)
             local pane_parent_pipe = is_last_child and "    " or "│   "
             for pi, pane in ipairs(win.panes) do
               local pane_is_last = pi == pane_count
-              local pane_branch = pane_is_last and "└─▶ " or "├─▶ "
+              local pane_branch = pane_is_last and "└─› " or "├─› "
               local pane_display = "  " .. pane_parent_pipe .. pane_branch .. pane.command
 
               entries[#entries + 1] = {
@@ -418,7 +418,7 @@ local function build_session_entries(sessions)
           child_idx = child_idx + 1
           local is_last_child = child_idx == total_children
           local label = float_display_label(float)
-          local branch = is_last_child and "└─▶ " or "├─▶ "
+          local branch = is_last_child and "└─› " or "├─› "
           local float_display = "  " .. branch .. label
 
           entries[#entries + 1] = {
