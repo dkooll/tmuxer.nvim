@@ -341,7 +341,7 @@ local function build_session_entries(sessions)
         type = "floating",
         session_name = session.name,
         parent = session.parent,
-        display_str = "  " .. session.name,
+        display_str = "  float_" .. session.name,
         ordinal_str = session.name,
       }
     else
@@ -430,7 +430,7 @@ local function build_session_entries(sessions)
         for _, float in ipairs(session.floating or {}) do
           child_idx = child_idx + 1
           local is_last_child = child_idx == total_children
-          local label = float_display_label(float)
+          local label = "float_" .. float_display_label(float)
           local branch = is_last_child and "└─› " or "├─› "
           local float_prefix = "  " .. branch
           local float_display = float_prefix .. label
