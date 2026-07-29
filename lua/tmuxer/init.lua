@@ -148,27 +148,54 @@ local function build_git_cmd(workspace_path, include_archive)
   end
 end
 
-local function find_git_projects_async(workspace_path, include_archive, callback)
+local pending_scans = {}
+
+local function find_git_projects_async(workspace_path, include_archive, callback, force)
   local cache_key = workspace_path .. (include_archive and ":with_archive" or ":without_archive")
-  if project_cache[cache_key] then
-    callback(project_cache[cache_key])
+  if not force and project_cache[cache_key] then
+    callback(project_cache[cache_key], true)
     return
   end
+
+  local pending = pending_scans[cache_key]
+  if pending then
+    pending[#pending + 1] = callback
+    return
+  end
+  pending_scans[cache_key] = { callback }
 
   local cmd = build_git_cmd(workspace_path, include_archive)
   local stdout_data = {}
 
-  vim.fn.jobstart(cmd, {
+  local job = vim.fn.jobstart(cmd, {
     stdout_buffered = true,
     on_stdout = function(_, data)
       if data then stdout_data = data end
     end,
     on_exit = function(_, code)
-      local results = parse_git_projects(code == 0 and stdout_data or {})
+      local results
+      if code == 0 then
+        results = parse_git_projects(stdout_data)
+      else
+        results = project_cache[cache_key] or {}
+      end
       project_cache[cache_key] = results
-      vim.schedule(function() callback(results) end)
+      local callbacks = pending_scans[cache_key]
+      pending_scans[cache_key] = nil
+      vim.schedule(function()
+        for _, cb in ipairs(callbacks) do cb(results, false) end
+      end)
     end,
   })
+
+  if job <= 0 then
+    local callbacks = pending_scans[cache_key]
+    pending_scans[cache_key] = nil
+    local results = project_cache[cache_key] or {}
+    vim.schedule(function()
+      for _, cb in ipairs(callbacks) do cb(results, false) end
+    end)
+  end
 end
 
 local function preload_cache(workspace_path)
@@ -185,22 +212,50 @@ function M.open_workspace_popup(workspace, opts)
   end
 
   local existing_sessions = get_tmux_session_name_set()
+  local current_bufnr
+  local shown_projects = {}
 
-  local function show_picker(projects)
+  local function projects_changed(a, b)
+    if #a ~= #b then return true end
+    for i = 1, #a do
+      if a[i].path ~= b[i].path then return true end
+    end
+    return false
+  end
+
+  local function project_finder(projects)
+    return finders.new_table {
+      results = projects,
+      entry_maker = function(entry)
+        return {
+          value = entry,
+          display = entry.name .. "/" .. entry.parent,
+          ordinal = entry.name .. " " .. entry.parent,
+        }
+      end
+    }
+  end
+
+  local function revalidate()
+    find_git_projects_async(workspace.path, M.config.show_archive, function(projects)
+      if not current_bufnr or not vim.api.nvim_buf_is_valid(current_bufnr) then return end
+      if not projects_changed(shown_projects, projects) then return end
+      local picker = action_state.get_current_picker(current_bufnr)
+      if picker then
+        shown_projects = projects
+        picker:refresh(project_finder(projects), { reset_prompt = false })
+      end
+    end, true)
+  end
+
+  local function show_picker(projects, from_cache)
+    shown_projects = projects
     pickers.new(apply_theme(opts), {
       prompt_title = "Select a project in " .. workspace.name,
-      finder = finders.new_table {
-        results = projects,
-        entry_maker = function(entry)
-          return {
-            value = entry,
-            display = entry.name .. "/" .. entry.parent,
-            ordinal = entry.name .. " " .. entry.parent,
-          }
-        end
-      },
+      finder = project_finder(projects),
       sorter = conf.generic_sorter({}),
       attach_mappings = function(prompt_bufnr)
+        current_bufnr = prompt_bufnr
         actions.select_default:replace(function()
           local picker = action_state.get_current_picker(prompt_bufnr)
           local selections = picker:get_multi_selection()
@@ -228,6 +283,8 @@ function M.open_workspace_popup(workspace, opts)
         return true
       end,
     }):find()
+
+    if from_cache then revalidate() end
   end
 
   find_git_projects_async(workspace.path, M.config.show_archive, show_picker)
