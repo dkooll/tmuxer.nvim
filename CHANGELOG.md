@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.1](https://github.com/dkooll/tmuxer.nvim/compare/v1.11.0...v1.11.1) (2026-07-29)
+
+
+### Bug Fixes
+
+* rescan git projects on finder open so freshly cloned repos appear ([#33](https://github.com/dkooll/tmuxer.nvim/issues/33)) ([4470e03](https://github.com/dkooll/tmuxer.nvim/commit/4470e030da32969013eefc2ad72a92cbe4dd8d95))
+
 ## [1.11.0](https://github.com/dkooll/tmuxer.nvim/compare/v1.10.0...v1.11.0) (2026-03-16)
 
 
